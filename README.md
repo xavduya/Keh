@@ -1,56 +1,73 @@
-# Suki — Social Media Management Prototype
+# Keh — AI-powered social media management
 
-This package contains the complete HTML, CSS, and JavaScript source of the Suki prototype, exported from source commit 8a4b26e53e6090658aaf6fc8114e8d6a16c12508.
+An AI-powered social media management SaaS for small business owners. Reduces the cognitive workload of social media marketing by helping owners make business decisions while the AI handles marketing decisions.
 
-## Open and run
+## Tech stack
 
-1. Extract this ZIP.
-2. Open the `suki-source-code` folder in VS Code, IBM Bob, or another editor.
-3. Open `index.html` in your browser. There is no build step or package installation.
+- **Next.js 16** — App Router, Server Components
+- **React 19** — Client Components for interactivity
+- **TypeScript** — strict mode
+- **Tailwind CSS v4** — utility-first styling
+- **shadcn/ui** — accessible component primitives
+- **Lucide React** — icons
+- **Zod** — validation
+- **Recharts** — analytics charts
+- **Supabase** — PostgreSQL, Auth, Storage *(Phase 5)*
+- **OpenAI** — AI content generation *(Phase 6)*
 
-You can also serve the folder with Python:
+## Getting started
 
-```sh
-python -m http.server 8000
+```bash
+npm install
+npm run dev
 ```
 
-Then visit http://localhost:8000. On Windows, `py -m http.server 8000` also works when the Python launcher is installed.
+Open [http://localhost:3000](http://localhost:3000).
 
-## Files
+## Environment variables
 
-- `index.html`: Application shell, metadata, and favicon.
-- `style.css`: All styling, typography, and responsive layouts.
-- `app.js`: Demo data, navigation, screens, and interactive behavior.
-- `README.md`: This guide.
+Copy `.env.example` to `.env.local` and fill in the values:
 
-## What is included
+```bash
+cp .env.example .env.local
+```
 
-Home dashboard, AI marketing workspace, five-step campaign creator, calendar with drag-and-drop rescheduling, content library, products and services, analytics, brand profile, social account connections, subscription preview, and settings.
+Never commit `.env.local` or any file containing real credentials.
 
-This is a vanilla JavaScript application, not a React project. Its screens use hash navigation such as `#home`, `#calendar`, and `#products`.
+## Project structure
 
-## Prototype limitations
+```
+src/
+├── app/               # Next.js App Router pages and layouts
+├── components/        # React components (layout, ui, feature)
+├── lib/               # Supabase client, AI service, social publisher, validation
+├── services/          # Data-access service functions (UI → Service → Data)
+├── hooks/             # Custom React hooks
+├── types/             # TypeScript domain interfaces
+├── data/              # Typed mock data (replaced by Supabase in Phase 5)
+├── constants/         # Platform metadata, statuses, goals, navigation
+└── utils/             # Pure utility functions
+```
 
-- AI responses and recommendations use templates and sample data, not a live model.
-- Social account connections and publishing are simulated.
-- Analytics and billing are illustrative.
-- Edits and uploaded images remain in memory for the current page session. Refreshing restores the sample data.
-- Images load from Unsplash, and fonts load from Google Fonts; internet access is needed for these external assets.
-- Clipboard access depends on browser permissions and secure-context support.
-- Optional WebMCP tools are feature-detected and only register in supporting browsers.
+## Refactoring phases
 
-No backend, API keys, credentials, dependencies, or database are required. The hosted Site's deployment configuration and Git metadata are omitted from this portable export.
+| Phase | Status | Description |
+|---|---|---|
+| 1 | ✅ Done | Audit of the @Sites prototype |
+| 2 | ✅ Done | Foundation — Next.js scaffold, types, constants, mock data, services |
+| 3 | Upcoming | Layout & navigation — sidebar, topbar, all 11 routes |
+| 3b | Upcoming | Feature components — campaign wizard, calendar, products |
+| 4 | Planned | Data layer abstraction — service/repository boundary |
+| 5 | Planned | Supabase — database, auth, RLS, storage |
+| 6 | Planned | AI layer — OpenAI integration via server-side service |
+| 7 | Planned | Social integrations — Facebook, Instagram adapters |
+| 8 | Planned | Metrics & learning — analytics pipeline, AI recommendations |
 
-## Editing
+## Scripts
 
-Change the `state` object in `app.js` to adjust the sample business, products, and posts. Shared colors are CSS variables near the top of `style.css`. Page functions in `app.js` render each screen; `render()` selects the current page.
-
-## Image sources
-
-The source references these remote image assets; they are not bundled:
-
-- Matcha: https://images.unsplash.com/photo-1749280447307-31a68eb38673
-- Iced latte: https://unsplash.com/photos/a-person-holding-a-drink-with-a-straw-in-it-WfuIO53oaTA
-- Croissant: https://unsplash.com/photos/a-croissant-on-a-plate-with-butter-and-a-knife-fc8y5qpBKWQ
-
-Review applicable image and font licenses before reusing third-party assets in a production product.
+```bash
+npm run dev      # Start development server
+npm run build    # Production build
+npm run start    # Start production server
+npm run lint     # ESLint
+```

@@ -1,0 +1,198 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Tailwind theme mapping
+   Maps CSS custom properties to Tailwind utility classes.
+   ───────────────────────────────────────────────────────────────────────── */
+@theme inline {
+  /* shadcn/ui tokens */
+  --color-background:              var(--background);
+  --color-foreground:              var(--foreground);
+  --color-card:                    var(--card);
+  --color-card-foreground:         var(--card-foreground);
+  --color-popover:                 var(--popover);
+  --color-popover-foreground:      var(--popover-foreground);
+  --color-primary:                 var(--primary);
+  --color-primary-foreground:      var(--primary-foreground);
+  --color-secondary:               var(--secondary);
+  --color-secondary-foreground:    var(--secondary-foreground);
+  --color-muted:                   var(--muted);
+  --color-muted-foreground:        var(--muted-foreground);
+  --color-accent:                  var(--accent);
+  --color-accent-foreground:       var(--accent-foreground);
+  --color-destructive:             var(--destructive);
+  --color-border:                  var(--border);
+  --color-input:                   var(--input);
+  --color-ring:                    var(--ring);
+  --color-chart-1:                 var(--chart-1);
+  --color-chart-2:                 var(--chart-2);
+  --color-chart-3:                 var(--chart-3);
+  --color-chart-4:                 var(--chart-4);
+  --color-chart-5:                 var(--chart-5);
+  --color-sidebar:                 var(--sidebar);
+  --color-sidebar-foreground:      var(--sidebar-foreground);
+  --color-sidebar-primary:         var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent:          var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border:          var(--sidebar-border);
+  --color-sidebar-ring:            var(--sidebar-ring);
+
+  /* Keh brand tokens — available as bg-brand-*, text-brand-*, etc. */
+  --color-brand:                   var(--keh-purple);
+  --color-brand-foreground:        #ffffff;
+  --color-brand-light:             var(--keh-light);
+  --color-brand-dark:              var(--keh-dark);
+  --color-brand-muted:             var(--keh-muted);
+  --color-brand-line:              var(--keh-line);
+  --color-brand-bg:                var(--keh-bg);
+
+  /* Radius scale */
+  --radius-sm:  calc(var(--radius) * 0.6);
+  --radius-md:  calc(var(--radius) * 0.8);
+  --radius-lg:  var(--radius);
+  --radius-xl:  calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Font families */
+  --font-sans:    var(--font-dm-sans);
+  --font-heading: var(--font-manrope);
+  --font-mono:    var(--font-geist-mono);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Light mode tokens
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Keh design system — translated from prototype style.css */
+  --keh-purple: #5849da;
+  --keh-dark:   #262535;
+  --keh-muted:  #7b7b8b;
+  --keh-line:   #e9e9ef;
+  --keh-bg:     #f7f8fb;
+  --keh-light:  #f0edff;
+
+  /* shadcn/ui semantic tokens — mapped to Keh palette */
+  --background:              #f7f8fb;
+  --foreground:              #262535;
+  --card:                    #ffffff;
+  --card-foreground:         #262535;
+  --popover:                 #ffffff;
+  --popover-foreground:      #262535;
+  --primary:                 #5849da;
+  --primary-foreground:      #ffffff;
+  --secondary:               #f0edff;
+  --secondary-foreground:    #5849da;
+  --muted:                   #f7f8fb;
+  --muted-foreground:        #7b7b8b;
+  --accent:                  #f0edff;
+  --accent-foreground:       #262535;
+  --destructive:             #b54b4b;
+  --border:                  #e9e9ef;
+  --input:                   #e9e9ef;
+  --ring:                    #5849da;
+
+  /* Chart colors */
+  --chart-1: #5849da;
+  --chart-2: #7c6ee6;
+  --chart-3: #a094ed;
+  --chart-4: #c5bdf5;
+  --chart-5: #e8e5fd;
+
+  /* Border radius base */
+  --radius: 0.625rem;
+
+  /* Sidebar tokens */
+  --sidebar:                    #ffffff;
+  --sidebar-foreground:         #262535;
+  --sidebar-primary:            #5849da;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent:             #f0edff;
+  --sidebar-accent-foreground:  #262535;
+  --sidebar-border:             #e9e9ef;
+  --sidebar-ring:               #5849da;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Base layer
+   ───────────────────────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans), system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  /* Heading font */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading), var(--font-sans), system-ui, sans-serif;
+    font-weight: 750;
+    letter-spacing: -0.03em;
+    margin: 0;
+  }
+
+  h1 { font-size: 1.75rem; }
+  h2 { font-size: 1.1875rem; }
+  h3 { font-size: 1.0625rem; }
+
+  p {
+    line-height: 1.65;
+    margin: 8px 0;
+    color: #777786;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button, input, select, textarea {
+    font: inherit;
+  }
+
+  small {
+    font-size: 0.8125rem;
+    color: var(--keh-muted);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Keh utility classes
+   Provide direct mappings from the prototype CSS conventions
+   so legacy class names can be adopted incrementally.
+   ───────────────────────────────────────────────────────────────────────── */
+@layer utilities {
+  .text-purple  { color: var(--keh-purple); }
+  .text-muted-keh { color: var(--keh-muted); }
+
+  .bg-keh-bg    { background-color: var(--keh-bg); }
+  .bg-keh-light { background-color: var(--keh-light); }
+
+  .border-keh   { border-color: var(--keh-line); }
+
+  /* Status pill colour variants */
+  .pill-scheduled       { background: #efedff; color: #6a57c9; }
+  .pill-published       { background: #edf7f2; color: #348369; }
+  .pill-active          { background: #edf7f2; color: #348369; }
+  .pill-action-required { background: #fff3df; color: #a6721d; }
+  .pill-failed          { background: #fdecec; color: #b54b4b; }
+  .pill-draft           { background: #f0f0f3; color: #7b7b8b; }
+
+  /* Platform badge colours */
+  .platform-facebook  { background: #1877f2; color: #fff; }
+  .platform-instagram { background: linear-gradient(135deg, #f58529, #dd2a7b, #8134af, #515bd4); color: #fff; }
+  .platform-tiktok    { background: #010101; color: #fff; }
+  .platform-google    { background: #4285f4; color: #fff; }
+}
