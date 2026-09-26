@@ -1,0 +1,361 @@
+
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Keh — Refactoring Progress &amp; Missing Features</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #fff;
+    color: #1f2328;
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .page { max-width: 760px; margin: 0 auto; padding: 40px 24px 60px; }
+  h1 { font-size: 24px; font-weight: 700; margin: 0 0 4px; letter-spacing: -.4px; }
+  h2 { font-size: 16px; font-weight: 700; margin: 32px 0 10px; letter-spacing: -.3px; padding-bottom: 6px; border-bottom: 1px solid #e5e7eb; }
+  h3 { font-size: 13px; font-weight: 700; margin: 14px 0 6px; color: #1f2328; }
+  p  { margin: 0 0 8px; }
+  ul, ol { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 3px; }
+  .subtitle { color: #57606a; font-size: 13px; margin-bottom: 28px; }
+  code {
+    background: #f7f8fa; border: 1px solid #e5e7eb; border-radius: 4px;
+    padding: 1px 5px; font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px;
+  }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 600;
+    padding: 2px 7px; border-radius: 4px; vertical-align: middle; white-space: nowrap;
+  }
+  .done   { background: #edf7f2; color: #1a7a55; }
+  .todo   { background: #f0f0f3; color: #57606a; }
+  .phase  { background: #eeecff; color: #5546df; }
+  .warn   { background: #fff3df; color: #a6721d; }
+  .error  { background: #fdecec; color: #b54b4b; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 14px; }
+  th { text-align: left; padding: 7px 10px; background: #f7f8fa; border: 1px solid #e5e7eb; font-weight: 600; }
+  td { padding: 7px 10px; border: 1px solid #e5e7eb; vertical-align: top; }
+  tr:hover td { background: #fafafa; }
+
+  .card {
+    background: #f7f8fa; border: 1px solid #e5e7eb; border-radius: 8px;
+    padding: 14px 16px; margin-bottom: 10px;
+  }
+  .card-title { font-weight: 700; font-size: 13px; margin-bottom: 5px; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .phase-block {
+    display: flex; gap: 0; margin-bottom: 10px;
+  }
+  .phase-num {
+    background: #5546df; color: white; font-weight: 700; font-size: 12px;
+    writing-mode: horizontal-tb; min-width: 36px; display: flex; align-items: center;
+    justify-content: center; border-radius: 6px 0 0 6px; padding: 10px 0;
+  }
+  .phase-body {
+    background: #f7f8fa; border: 1px solid #e5e7eb; border-left: none;
+    border-radius: 0 6px 6px 0; padding: 12px 14px; flex: 1;
+  }
+  .missing-block {
+    border-left: 3px solid #e5e7eb; padding-left: 12px; margin-bottom: 16px;
+  }
+  .missing-block.high   { border-color: #b54b4b; }
+  .missing-block.medium { border-color: #a6721d; }
+  .missing-block.low    { border-color: #57606a; }
+  .missing-block.deferred { border-color: #5546df; }
+
+  footer {
+    margin-top: 48px; padding-top: 16px; border-top: 1px solid #e5e7eb;
+    text-align: center; font-size: 12px; color: #57606a;
+  }
+
+  @media (max-width: 560px) {
+    .two-col { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Keh — Refactoring Progress &amp; Missing Features</h1>
+  <p class="subtitle">State of the project after Phase 1 · Phase 2 · Phase 3  |  Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui</p>
+
+  
+  <h2>What was completed</h2>
+
+  <div class="phase-block">
+    <div class="phase-num">1</div>
+    <div class="phase-body">
+      <strong>PHASE 1 — Audit</strong>
+      <p>Full inspection of the @Sites prototype (3-file vanilla JS app). Documented framework, structure, routes, components, mock data, state management, styling, duplications, and architectural problems. Produced prioritized refactoring plan.</p>
+    </div>
+  </div>
+
+  <div class="phase-block">
+    <div class="phase-num">2</div>
+    <div class="phase-body">
+      <strong>PHASE 2 — Foundation</strong>
+      <ul>
+        <li>Scaffolded <strong>Next.js 16</strong> + <strong>React 19</strong> + <strong>TypeScript</strong> (strict) + <strong>Tailwind CSS v4</strong> + <strong>shadcn/ui</strong></li>
+        <li>Installed <strong>Lucide React</strong>, <strong>Recharts</strong>, <strong>Zod</strong></li>
+        <li>Translated all CSS design tokens (<code>--purple</code>, <code>--dark</code>, <code>--muted</code>, etc.) into <code>--keh-*</code> CSS custom properties, mapped to shadcn semantic tokens so <code>bg-primary</code> = Keh purple</li>
+        <li>Configured <strong>DM Sans</strong> (body) + <strong>Manrope</strong> (headings) via <code>next/font/google</code></li>
+        <li>Created <code>src/types/index.ts</code> — full domain model: <code>User</code>, <code>Business</code>, <code>BrandProfile</code>, <code>Product</code>, <code>SocialAccount</code>, <code>Campaign</code>, <code>SocialPost</code>, <code>PostMetric</code>, <code>AIRecommendation</code>, <code>Subscription</code>, <code>CampaignDraft</code></li>
+        <li>Created <code>src/constants/index.ts</code> — platforms, statuses, goals, nav items, subscription plans, CTA options, tone/language enums</li>
+        <li>Extracted all hardcoded prototype data into 6 typed files: <code>mock-business.ts</code>, <code>mock-products.ts</code>, <code>mock-posts.ts</code>, <code>mock-analytics.ts</code>, <code>mock-recommendations.ts</code>, <code>mock-social-accounts.ts</code></li>
+        <li>Created <code>.env.example</code> with all required variable names (Supabase, OpenAI, Meta, TikTok, Stripe)</li>
+        <li>Created <code>src/utils/index.ts</code> — <code>timeLabel()</code>, <code>formatDate()</code>, <code>formatPrice()</code>, <code>platformLabel()</code></li>
+        <li>Created service layer stubs: <code>campaign.service.ts</code>, <code>product.service.ts</code>, <code>analytics.service.ts</code>, <code>recommendation.service.ts</code></li>
+        <li>Created lib stubs: <code>lib/supabase/client.ts</code>, <code>lib/supabase/server.ts</code>, <code>lib/ai/ai.service.ts</code>, <code>lib/social/publisher.interface.ts</code>, <code>lib/validation/schemas.ts</code></li>
+        <li>Renamed project from <strong>Suki → Keh</strong> throughout all source files, CSS variables, package.json, and README</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="phase-block">
+    <div class="phase-num">3</div>
+    <div class="phase-body">
+      <strong>PHASE 3 — Layout &amp; All Pages</strong>
+      <ul>
+        <li>Built <strong>AppSidebar</strong> — brand mark, business card, Create Campaign CTA, workspace nav with active states, bottom nav, user row; mobile slide-in with overlay</li>
+        <li>Built <strong>TopBar</strong> — page title auto-detected from route, "Interactive demo" badge, bell, avatar, mobile hamburger</li>
+        <li>Built <strong>DashboardLayout</strong> with Next.js route group <code>(dashboard)</code> — all 11 routes share the shell</li>
+        <li>Built 8 shared UI primitives: <code>SocialPlatformBadge</code>, <code>PlatformGroup</code>, <code>PostStatusBadge</code>, <code>PageHeader</code>, <code>StatCard</code>, <code>FilterTabs</code>, <code>EmptyState</code>, <code>HintBox</code></li>
+        <li>Rebuilt all 11 pages matching the prototype screenshots:
+          <ul>
+            <li><code>/dashboard</code> — recommendation card, quick-action list, 4 stat cards, upcoming posts grouped by date, action-required widget, connected accounts widget</li>
+            <li><code>/assistant</code> — 3 recommendation cards (dismissible), audience learnings, Ask Keh chat input with template response</li>
+            <li><code>/campaigns/new</code> — full 5-step wizard with shared React Context: Goal → Content → Platforms → Review → Publish</li>
+            <li><code>/calendar</code> — month grid (Mon-first), platform filter, per-day post chips with status colours, month navigation</li>
+            <li><code>/content</code> — card grid, 5 filter tabs, reuse/duplicate/edit/analytics actions</li>
+            <li><code>/products</code> — product cards with image, category, price, campaign count, create/edit actions</li>
+            <li><code>/analytics</code> — <strong>Recharts bar chart</strong> (replacing CSS bars), platform filter with ratio math, stat cards, "what worked" list, performance table</li>
+            <li><code>/brand</code> — 3-section form: business info, audience, brand voice &amp; identity (tone, language, CTA, color, logo)</li>
+            <li><code>/social-accounts</code> — connect/disconnect per platform with live client state</li>
+            <li><code>/subscription</code> — plan card, usage progress bars for AI campaigns and scheduled posts</li>
+            <li><code>/settings</code> — preference toggles (notifications, fresh mode, prices, timezone)</li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  
+  <h2>Current project structure</h2>
+
+  <table>
+    <thead><tr><th>Directory</th><th>Contents</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td><code>src/app/(dashboard)/</code></td><td>All 11 dashboard routes + shared layout</td><td><span class="badge done">✓ Done</span></td></tr>
+      <tr><td><code>src/app/(auth)/</code></td><td>Login / signup pages</td><td><span class="badge todo">Not built</span></td></tr>
+      <tr><td><code>src/app/api/</code></td><td>API route handlers</td><td><span class="badge todo">Not built</span></td></tr>
+      <tr><td><code>src/components/layout/</code></td><td>AppSidebar, TopBar, DashboardLayout</td><td><span class="badge done">✓ Done</span></td></tr>
+      <tr><td><code>src/components/ui/</code></td><td>8 shared primitives + shadcn Button</td><td><span class="badge done">✓ Done</span></td></tr>
+      <tr><td><code>src/components/campaigns/</code></td><td>5-step wizard + context</td><td><span class="badge done">✓ Done</span></td></tr>
+      <tr><td><code>src/components/dashboard/</code></td><td>RecommendationCard, MetricsRow (standalone)</td><td><span class="badge todo">Inline in page</span></td></tr>
+      <tr><td><code>src/data/</code></td><td>6 typed mock data files</td><td><span class="badge done">✓ Done</span></td></tr>
+      <tr><td><code>src/types/</code></td><td>Full domain model</td><td><span class="badge done">✓ Done</span></td></tr>
+      <tr><td><code>src/constants/</code></td><td>Platforms, statuses, goals, nav, plans</td><td><span class="badge done">✓ Done</span></td></tr>
+      <tr><td><code>src/services/</code></td><td>4 service files (mock-backed)</td><td><span class="badge done">✓ Done</span></td></tr>
+      <tr><td><code>src/lib/supabase/</code></td><td>Client + server stubs</td><td><span class="badge warn">Stub only</span></td></tr>
+      <tr><td><code>src/lib/ai/</code></td><td>AI service stub</td><td><span class="badge warn">Stub only</span></td></tr>
+      <tr><td><code>src/lib/social/</code></td><td>Publisher interface stub</td><td><span class="badge warn">Stub only</span></td></tr>
+      <tr><td><code>src/lib/validation/</code></td><td>Zod schemas (domain + form)</td><td><span class="badge done">✓ Done</span></td></tr>
+      <tr><td><code>src/utils/</code></td><td>timeLabel, formatDate, formatPrice, etc.</td><td><span class="badge done">✓ Done</span></td></tr>
+      <tr><td><code>src/hooks/</code></td><td>Custom hooks</td><td><span class="badge todo">Not created</span></td></tr>
+    </tbody>
+  </table>
+
+  
+  <h2>Missing features — UI &amp; interactions (Phase 3b)</h2>
+  <p>These are gaps in the current pages compared to the prototype. No backend required — all are frontend/UX work.</p>
+
+  <div class="missing-block high">
+    <h3>Campaign wizard — state does not persist to content library</h3>
+    <p>Completing the wizard (Schedule / Publish Now / Save Draft) currently does nothing. The post does not appear in <code>/content</code> or <code>/calendar</code>. The prototype added the post to <code>state.posts</code> in-memory. Needs a shared client-side store (React context or Zustand) so wizard output lands in the content and calendar pages for the session.</p>
+  </div>
+
+  <div class="missing-block high">
+    <h3>Product modal — Add / Edit product</h3>
+    <p>The "Add product" and "Edit product" buttons on <code>/products</code> do nothing. The prototype had a dialog with name, price, description, category, availability, promo price, product link, photo upload, and AI notes fields. Needs a modal component backed by local state.</p>
+  </div>
+
+  <div class="missing-block high">
+    <h3>Calendar — post detail modal + drag-to-reschedule</h3>
+    <p>Clicking a calendar post chip does nothing. The prototype opened a modal with reschedule form and reuse/analytics actions. Drag-and-drop rescheduling is also absent.</p>
+  </div>
+
+  <div class="missing-block high">
+    <h3>Content library — Reuse / Duplicate / Edit actions</h3>
+    <p>The three action buttons on each content card are rendered but wired to nothing. "Reuse" should pre-fill the campaign wizard. "Duplicate" should create a draft copy. "Edit" should open the wizard at the content step for non-published posts.</p>
+  </div>
+
+  <div class="missing-block medium">
+    <h3>Dashboard recommendation — "Why this recommendation?" modal</h3>
+    <p>The button is rendered but opens nothing. Should show a dialog with confidence source, data reasoning, and sample post history.</p>
+  </div>
+
+  <div class="missing-block medium">
+    <h3>TopBar — Notifications panel</h3>
+    <p>The bell icon is rendered but does nothing. Prototype showed a dropdown with "TikTok needs your finishing touch" and "Your weekly recommendation is ready" notifications.</p>
+  </div>
+
+  <div class="missing-block medium">
+    <h3>Brand profile — save actually updates data</h3>
+    <p>The save button shows a "✓ Saved" flash but does not propagate changes. Business name in the sidebar and AI captions should reflect saved brand profile values.</p>
+  </div>
+
+  <div class="missing-block medium">
+    <h3>Social accounts — disconnect confirmation dialog</h3>
+    <p>Disconnect immediately fires. Prototype showed a confirmation modal first ("Your prepared content stays in the library…").</p>
+  </div>
+
+  <div class="missing-block medium">
+    <h3>Subscription — upgrade and manage plan modals</h3>
+    <p>Both buttons are rendered but open nothing. Should show a plan preview dialog (Growth plan details) and a current billing summary modal respectively.</p>
+  </div>
+
+  <div class="missing-block medium">
+    <h3>Analytics — performance table images + format column</h3>
+    <p>The performance table shows title, platform, status, and reach but omits the product thumbnail and "Format / Tone / Price shown / Time" columns visible in the prototype.</p>
+  </div>
+
+  <div class="missing-block medium">
+    <h3>Settings — "fresh mode" actually empties dashboard data</h3>
+    <p>The toggle is wired to local state but does not affect <code>/dashboard</code>, <code>/analytics</code>, or <code>/assistant</code>. Those pages should detect the setting and show the empty-state cold-start experience instead of sample data.</p>
+  </div>
+
+  <div class="missing-block low">
+    <h3>Campaign wizard — Regenerate caption actually varies output</h3>
+    <p>Hitting "Regenerate" calls <code>generateCaptions(variation=true)</code> which changes the opening line but uses the same template. In a real implementation this calls the AI service. A more varied template mock would improve the demo experience.</p>
+  </div>
+
+  <div class="missing-block low">
+    <h3>Calendar — week view</h3>
+    <p>The "Week" toggle is rendered and switches the state variable but renders the same month grid. Prototype showed a 7-day horizontal layout for the current week.</p>
+  </div>
+
+  <div class="missing-block low">
+    <h3>Post status badge — "Active" vs "Inactive" on products</h3>
+    <p>Product cards currently reuse <code>PostStatusBadge</code> with <code>PUBLISHED</code> / <code>FAILED</code> as a workaround. Should have a dedicated <code>AvailabilityBadge</code> component with correct "Active" / "Unavailable" labels.</p>
+  </div>
+
+  <div class="missing-block low">
+    <h3>Assistant page — "Apply to future posts" preference is local only</h3>
+    <p>The price-first toggle on the assistant page does not cross-communicate with the campaign wizard or settings page. In the prototype it was global state.</p>
+  </div>
+
+  
+  <h2>Missing features — architecture (Phase 4)</h2>
+
+  <div class="missing-block medium">
+    <h3>Global client-side session store</h3>
+    <p>The prototype used a single mutable <code>state</code> object. The refactored app has no equivalent shared store. Adding/editing products or completing the campaign wizard does not propagate across pages. Phase 4 should introduce a lightweight React context (or Zustand) for session-level state: products, posts, brand preferences.</p>
+  </div>
+
+  <div class="missing-block medium">
+    <h3>Pages still import mock data directly</h3>
+    <p>Several pages (<code>/dashboard</code>, <code>/content</code>, <code>/calendar</code>, etc.) import from <code>src/data/</code> directly rather than calling <code>src/services/</code>. The service layer exists but is not used by the UI yet. Phase 4 should route all data access through service functions so the Supabase swap is a one-file change per entity.</p>
+  </div>
+
+  <div class="missing-block low">
+    <h3>Shared campaign state across routes</h3>
+    <p><code>CampaignContext</code> is mounted only inside <code>/campaigns/new</code>. A broader context or store is needed to pass the "Reuse campaign" pre-fill from the content library into the wizard, and to persist wizard output into the calendar and content list.</p>
+  </div>
+
+  
+  <h2>Missing features — deferred phases</h2>
+
+  <table>
+    <thead><tr><th>Phase</th><th>Feature</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>4 — Data layer</td>
+        <td>All UI calls service functions; services call mock data. Ready for Supabase swap.</td>
+        <td><span class="badge warn">Partial</span></td>
+      </tr>
+      <tr>
+        <td>5 — Supabase</td>
+        <td>Database schema, Auth (login/signup/logout/password reset), Row Level Security, Supabase Storage for product/brand images, replace all mock data with real queries</td>
+        <td><span class="badge todo">Not started</span></td>
+      </tr>
+      <tr>
+        <td>5 — Auth routes</td>
+        <td><code>/login</code>, <code>/signup</code> pages; protected dashboard routes; User → Business ownership; session middleware</td>
+        <td><span class="badge todo">Not started</span></td>
+      </tr>
+      <tr>
+        <td>6 — AI layer</td>
+        <td>Real OpenAI caption generation in <code>lib/ai/ai.service.ts</code>; <code>/api/ai/generate</code> route handler; structured output with Zod; replace template captions in wizard</td>
+        <td><span class="badge todo">Stub only</span></td>
+      </tr>
+      <tr>
+        <td>6 — AI recommendations</td>
+        <td>Real AI-generated recommendations from analytics findings; <code>explainPerformance()</code>; <code>generateRecommendations()</code></td>
+        <td><span class="badge todo">Stub only</span></td>
+      </tr>
+      <tr>
+        <td>7 — Social integrations</td>
+        <td>Facebook / Instagram OAuth connect flow; <code>FacebookPublisher</code> + <code>InstagramPublisher</code> implementing <code>SocialPublisher</code> interface; real publish + schedule API calls</td>
+        <td><span class="badge todo">Interface stub only</span></td>
+      </tr>
+      <tr>
+        <td>7 — TikTok</td>
+        <td>TikTok OAuth + manual-publish flow</td>
+        <td><span class="badge todo">Not started</span></td>
+      </tr>
+      <tr>
+        <td>8 — Metrics collection</td>
+        <td>Background job (Trigger.dev or Inngest) to fetch <code>PostMetric</code> from platform APIs after publish; store in Supabase</td>
+        <td><span class="badge todo">Not started</span></td>
+      </tr>
+      <tr>
+        <td>8 — Analytics pipeline</td>
+        <td>Analytics service calculates structured findings from real <code>PostMetric</code> data; AI interprets findings into <code>AIRecommendation[]</code>; replaces hardcoded mock insights</td>
+        <td><span class="badge todo">Not started</span></td>
+      </tr>
+      <tr>
+        <td>Payments</td>
+        <td>Stripe subscription checkout; plan enforcement (post/campaign limits); billing portal</td>
+        <td><span class="badge todo">Not started</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  
+  <h2>Build health</h2>
+
+  <table>
+    <thead><tr><th>Check</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>TypeScript (<code>tsc --noEmit</code>)</td><td><span class="badge done">✓ 0 errors</span></td></tr>
+      <tr><td>ESLint (<code>--max-warnings=0</code>)</td><td><span class="badge done">✓ 0 warnings</span></td></tr>
+      <tr><td>Next.js production build</td><td><span class="badge done">✓ 13 routes compiled</span></td></tr>
+      <tr><td>All 11 dashboard routes</td><td><span class="badge done">✓ Static pre-rendered</span></td></tr>
+      <tr><td>Secrets in source code</td><td><span class="badge done">✓ None — .env.example only</span></td></tr>
+      <tr><td>Stale suki/ ghost folder</td><td><span class="badge done">✓ Removed</span></td></tr>
+    </tbody>
+  </table>
+
+  
+  <h2>Recommended next steps</h2>
+
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title">Option A — Complete Phase 3b (UI interactions)</div>
+      <p>Wire up all the buttons and modals that are currently rendered but do nothing: product modal, post detail modal, campaign wizard output → content list, reuse/duplicate, notification panel, "why this recommendation" dialog. The app becomes fully interactive without any backend work.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Option B — Phase 4 (Data layer)</div>
+      <p>Route all page data access through service functions. Add a lightweight session store (React context) so campaign wizard output, product edits, and brand profile changes propagate across pages. Prepare the clean UI → Service → Data boundary needed before Supabase.</p>
+    </div>
+  </div>
+
+  <footer>Made with IBM Bob</footer>
+</div>
+</body>
+</html>
