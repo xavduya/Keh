@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type {
   AIUpdateRecord,
   CampaignDraft,
@@ -9,6 +9,11 @@ import type {
   Product,
 } from "@/types";
 import { formatPrice } from "@/utils";
+import {
+  APPLY_AI_CAMPAIGN_EVENT,
+  takePendingAiCampaign,
+  type PendingAiCampaign,
+} from "@/hooks/useMarketingAssistant";
 
 /** Business details the wizard writes about — passed in from the server page. */
 export interface WizardBusiness {
@@ -83,27 +88,6 @@ function captionInputsKey(draft: CampaignDraft) {
   return [draft.goal, draft.productId, draft.promotion, draft.duration, draft.instructions].join("|");
 }
 
-interface PendingAiStorageData {
-  draftUpdates?: Partial<CampaignDraft>;
-  changes?: FieldChangeNotification[];
-  summary?: string;
-  suggestedStep?: number;
-}
-
-function getPendingAiDraft(): PendingAiStorageData | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const stored = sessionStorage.getItem("keh_pending_ai_campaign");
-    if (stored) {
-      sessionStorage.removeItem("keh_pending_ai_campaign");
-      return JSON.parse(stored) as PendingAiStorageData;
-    }
-  } catch {
-    // Ignore storage parse errors
-  }
-  return null;
-}
-
 export function CampaignProvider({
   children,
   products,
@@ -120,44 +104,32 @@ export function CampaignProvider({
   const firstProductId =
     products.find((p) => p.id === initialProductId)?.id ?? products[0]?.id ?? "";
 
-  const [initialPending] = useState<PendingAiStorageData | null>(getPendingAiDraft);
-
-  const [draft, setDraftState] = useState<CampaignDraft>(() => {
-    const base: CampaignDraft = {
-      goal: initialGoal ?? "PROMOTE_PRODUCT",
-      productId: firstProductId,
-      promotion: "",
-      duration: "",
-      instructions: "",
-      scheduledDate: "",
-      scheduledTime: "18:00",
-      platforms: ["FACEBOOK", "INSTAGRAM"],
-      captions: {},
-      editId: null,
-    };
-    return initialPending?.draftUpdates
-      ? { ...base, ...initialPending.draftUpdates }
-      : base;
+  const [draft, setDraftState] = useState<CampaignDraft>({
+    goal: initialGoal ?? "PROMOTE_PRODUCT",
+    productId: firstProductId,
+    promotion: "",
+    duration: "",
+    instructions: "",
+    scheduledDate: "",
+    scheduledTime: "18:00",
+    platforms: ["FACEBOOK", "INSTAGRAM"],
+    captions: {},
+    editId: null,
   });
-
-  const [step, setStep] = useState<number>(() => initialPending?.suggestedStep ?? 0);
-
+  const [step, setStep] = useState(0);
   // Which inputs the current captions were generated from.
   const [captionsKey, setCaptionsKey] = useState<string | null>(null);
 
-  // AI control state: tracking what the AI modified so user is informed
-  const [aiChanges, setAiChanges] = useState<AIUpdateRecord | null>(() => {
-    if (!initialPending?.draftUpdates) return null;
-    return {
-      timestamp: Date.now(),
-      summary: initialPending.summary || "AI filled campaign fields",
-      changes: initialPending.changes || [],
-    };
-  });
+  // What the AI last changed, so the owner can review or undo it.
+  const [aiChanges, setAiChanges] = useState<AIUpdateRecord | null>(null);
+  // Fields the AI has filled, for the "AI" badges on each step.
+  const [aiUpdatedFields, setAiUpdatedFields] = useState<string[]>([]);
 
-  const [aiUpdatedFields, setAiUpdatedFields] = useState<string[]>(() => {
-    return (initialPending?.changes || []).map((c) => c.field);
-  });
+  // Latest draft for callbacks that must not re-subscribe on every edit.
+  const draftRef = useRef(draft);
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
 
   const product = products.find((p) => p.id === draft.productId) ?? null;
 
@@ -178,25 +150,26 @@ export function CampaignProvider({
       summary: string,
       suggestedStep?: number
     ) => {
-      setDraftState((prev) => {
-        const previous = { ...prev };
-        setAiChanges({
-          timestamp: Date.now(),
-          summary,
-          changes,
-          previousDraft: previous,
-        });
-        return { ...prev, ...updates };
-      });
-
-      const changedKeys = changes.map((c) => c.field);
-      setAiUpdatedFields((prev) => Array.from(new Set([...prev, ...changedKeys])));
-
-      if (suggestedStep !== undefined && typeof suggestedStep === "number") {
-        setStep(suggestedStep);
+      // Never select a product this business doesn't have (or can't sell).
+      const safeUpdates = { ...updates };
+      if (safeUpdates.productId && !products.some((p) => p.id === safeUpdates.productId)) {
+        delete safeUpdates.productId;
       }
+      const safeChanges = safeUpdates.productId === updates.productId
+        ? changes
+        : changes.filter((c) => c.field !== "productId");
+
+      const previousDraft = draftRef.current;
+      const nextDraft = { ...previousDraft, ...safeUpdates };
+      setDraftState(nextDraft);
+      setAiChanges({ timestamp: Date.now(), summary, changes: safeChanges, previousDraft });
+      setAiUpdatedFields((prev) => Array.from(new Set([...prev, ...safeChanges.map((c) => c.field)])));
+      // AI-written captions count as generated for these inputs, so moving
+      // on from step 0 doesn't replace them with the template.
+      if (safeUpdates.captions) setCaptionsKey(captionInputsKey(nextDraft));
+      if (typeof suggestedStep === "number") setStep(Math.min(Math.max(suggestedStep, 0), 4));
     },
-    []
+    [products]
   );
 
   function revertAiUpdates() {
@@ -204,6 +177,7 @@ export function CampaignProvider({
     setDraftState(aiChanges.previousDraft);
     setAiChanges(null);
     setAiUpdatedFields([]);
+    setCaptionsKey(null);
   }
 
   function dismissAiBanner() {
@@ -213,8 +187,8 @@ export function CampaignProvider({
   function nextStep() {
     if (step === 0) {
       if (!draft.goal || !product) return;
-      // Regenerate if the goal, product or offer changed since the last run and no AI captions exist.
-      if (captionsKey !== captionInputsKey(draft) && !draft.captions?.FACEBOOK) {
+      // Regenerate if the goal, product or offer changed since the last run.
+      if (captionsKey !== captionInputsKey(draft)) {
         generateCaptions();
       }
     }
@@ -225,35 +199,28 @@ export function CampaignProvider({
     setStep((s) => Math.max(s - 1, 0));
   }
 
-  // Handle live custom event when copilot updates fields
+  // Apply an AI-filled campaign: one handed over from another page
+  // (read after mount — sessionStorage doesn't exist during server render),
+  // or one sent live by the floating copilot while the wizard is open.
   useEffect(() => {
-    function handleExternalAiEvent(event: CustomEvent<{
-      draftUpdates: Partial<CampaignDraft>;
-      changes: FieldChangeNotification[];
-      summary: string;
-      suggestedStep?: number;
-    }>) {
-      if (event.detail?.draftUpdates) {
-        applyAiUpdates(
-          event.detail.draftUpdates,
-          event.detail.changes || [],
-          event.detail.summary || "AI applied campaign changes",
-          event.detail.suggestedStep
-        );
-      }
+    function apply(pending: PendingAiCampaign) {
+      if (!pending.draftUpdates) return;
+      applyAiUpdates(
+        pending.draftUpdates,
+        pending.changes ?? [],
+        pending.summary || "Keh filled in your campaign",
+        pending.suggestedStep
+      );
     }
 
-    window.addEventListener(
-      "keh:apply-ai-campaign" as unknown as keyof WindowEventMap,
-      handleExternalAiEvent as EventListener
-    );
+    const pending = takePendingAiCampaign();
+    if (pending) apply(pending);
 
-    return () => {
-      window.removeEventListener(
-        "keh:apply-ai-campaign" as unknown as keyof WindowEventMap,
-        handleExternalAiEvent as EventListener
-      );
-    };
+    function onApply(event: Event) {
+      apply((event as CustomEvent<PendingAiCampaign>).detail);
+    }
+    window.addEventListener(APPLY_AI_CAMPAIGN_EVENT, onApply);
+    return () => window.removeEventListener(APPLY_AI_CAMPAIGN_EVENT, onApply);
   }, [applyAiUpdates]);
 
   return (

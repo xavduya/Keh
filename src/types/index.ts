@@ -331,10 +331,11 @@ export interface CampaignDraft {
 // Marketing Manager AI & In-Website Control Types
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** One field the AI marketing manager filled or changed, shown to the owner. */
 export interface FieldChangeNotification {
   field: string;
   label: string;
-  previousValue?: string | string[] | null;
+  oldValue?: string | string[] | null;
   newValue: string | string[];
   reason: string;
 }
@@ -371,3 +372,28 @@ export interface AIUpdateRecord {
   previousDraft?: CampaignDraft;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AI marketing manager
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** What the owner is asking the assistant to do. */
+export type AssistantIntent = "chat" | "ideas" | "fill" | "captions" | "schedule";
+
+/** Response from POST /api/assistant. */
+export interface MarketingAssistantResponse {
+  answer: string;
+  /** "openai" when a model answered; "guided" for the built-in rules engine. */
+  mode: "openai" | "guided";
+  action?: MarketingCampaignAction;
+  ideas?: MarketingIdea[];
+}
+
+/** A message in an assistant conversation (client-side only). */
+export interface AssistantMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  mode?: MarketingAssistantResponse["mode"];
+  action?: MarketingCampaignAction;
+  ideas?: MarketingIdea[];
+}

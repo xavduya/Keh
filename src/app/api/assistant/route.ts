@@ -7,6 +7,9 @@ import {
   getBusinessByOwnerId,
 } from "@/services/business.service";
 import { getProducts } from "@/services/product.service";
+import { getPosts } from "@/services/campaign.service";
+import { findings, insights, periodSummary, recommendedSlot } from "@/lib/analytics";
+import { todayKey } from "@/utils/datetime";
 
 export async function POST(request: Request) {
   const contentLength = Number(request.headers.get("content-length") ?? 0);
@@ -74,10 +77,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const [products, brandProfile] = await Promise.all([
+    const [products, brandProfile, posts] = await Promise.all([
       getProducts(business.id),
       getBrandProfile(business.id),
+      getPosts(business.id),
     ]);
+    // The business's own results, so advice and timing are based on them.
+    const found = findings(posts);
+    const summary = periodSummary(posts, todayKey());
     const advice = await generateMarketingAdvice(parsedRequest.data, {
       business: {
         name: business.name,
@@ -107,6 +114,18 @@ export async function POST(request: Request) {
         availability: product.availability,
         aiNotes: product.aiNotes?.slice(0, 300),
       })),
+      performance:
+        found.measuredCount > 0
+          ? {
+              measuredPosts: found.measuredCount,
+              avgReach: found.avgReach,
+              reachGrowthPct: summary.reachGrowthPct,
+              bestProductName: found.bestProduct?.value.name,
+              bestPlatform: found.bestPlatform?.value,
+              insights: insights(found, summary),
+            }
+          : null,
+      slot: recommendedSlot(found),
     });
 
     return NextResponse.json(advice);

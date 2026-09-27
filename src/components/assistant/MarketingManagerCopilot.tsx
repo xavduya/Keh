@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
@@ -13,19 +13,13 @@ import {
   Bot,
   Wand2,
 } from "lucide-react";
-import type {
-  MarketingAssistantResponse,
-  MarketingCampaignAction,
-  MarketingIdea,
-} from "@/types";
-
-interface CopilotMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  action?: MarketingCampaignAction;
-  ideas?: MarketingIdea[];
-}
+import {
+  OPEN_AI_COPILOT_EVENT,
+  dispatchAiCampaign,
+  stashPendingAiCampaign,
+  useMarketingAssistant,
+} from "@/hooks/useMarketingAssistant";
+import type { AssistantIntent, MarketingCampaignAction } from "@/types";
 
 export function MarketingManagerCopilot({
   businessName,
@@ -37,121 +31,39 @@ export function MarketingManagerCopilot({
   const router = useRouter();
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<CopilotMessage[]>([]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
   const isAlreadyInWizard = pathname === "/campaigns/new";
 
-  // Listen to custom open events from TopBar or other components
+  const { messages, ask, loading, error } = useMarketingAssistant({
+    // Filled fields go straight into the open wizard, or wait for the next one.
+    onAction: (action) =>
+      isAlreadyInWizard ? dispatchAiCampaign(action) : stashPendingAiCampaign(action),
+  });
+
+  // Open from the top bar (or anywhere) via a window event; close with Escape.
   useEffect(() => {
-    function handleOpenEvent(event: CustomEvent<{ prompt?: string }>) {
+    function handleOpen(event: Event) {
       setIsOpen(true);
-      if (event.detail?.prompt) {
-        setInput(event.detail.prompt);
-      }
+      const prompt = (event as CustomEvent<{ prompt?: string }>).detail?.prompt;
+      if (prompt) setInput(prompt);
     }
-
-    window.addEventListener(
-      "keh:open-ai-copilot" as unknown as keyof WindowEventMap,
-      handleOpenEvent as EventListener
-    );
-
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setIsOpen(false);
+    }
+    window.addEventListener(OPEN_AI_COPILOT_EVENT, handleOpen);
+    window.addEventListener("keydown", handleKey);
     return () => {
-      window.removeEventListener(
-        "keh:open-ai-copilot" as unknown as keyof WindowEventMap,
-        handleOpenEvent as EventListener
-      );
+      window.removeEventListener(OPEN_AI_COPILOT_EVENT, handleOpen);
+      window.removeEventListener("keydown", handleKey);
     };
   }, []);
 
-  async function handleSendMessage(promptText?: string, intent?: string) {
+  function handleSendMessage(promptText?: string, intent?: AssistantIntent) {
     const question = (promptText || input).trim();
     if (!question || loading) return;
-
-    setError("");
-    setLoading(true);
-
-    const userMessage: CopilotMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: question,
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
     if (!promptText) setInput("");
-
-    try {
-      const history = messages.slice(-6).map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-
-      const res = await fetch("/api/assistant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question,
-          history,
-          actionIntent: intent || "chat",
-        }),
-      });
-
-      const data = (await res.json()) as MarketingAssistantResponse & {
-        error?: string;
-      };
-
-      if (!res.ok) {
-        throw new Error(
-          data.error || "Keh AI is currently unavailable. Please try again."
-        );
-      }
-
-      const assistantMsg: CopilotMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: data.answer,
-        action: data.action,
-        ideas: data.ideas,
-      };
-
-      setMessages((prev) => [...prev, assistantMsg]);
-
-      // If the AI modified/filled fields:
-      if (data.action?.draftUpdates) {
-        if (isAlreadyInWizard) {
-          // If already in wizard, dispatch event to update active context live
-          window.dispatchEvent(
-            new CustomEvent("keh:apply-ai-campaign", {
-              detail: {
-                draftUpdates: data.action.draftUpdates,
-                changes: data.action.changes,
-                summary: data.action.summary,
-                suggestedStep: data.action.suggestedStep,
-              },
-            })
-          );
-        } else {
-          // Store in sessionStorage so opening /campaigns/new will adopt this draft
-          sessionStorage.setItem(
-            "keh_pending_ai_campaign",
-            JSON.stringify({
-              draftUpdates: data.action.draftUpdates,
-              changes: data.action.changes,
-              summary: data.action.summary,
-              suggestedStep: data.action.suggestedStep,
-            })
-          );
-        }
-      }
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to receive marketing advice."
-      );
-    } finally {
-      setLoading(false);
-    }
+    ask(question, { intent: intent ?? "chat" });
   }
 
   function handleFormSubmit(e: FormEvent) {
@@ -160,22 +72,12 @@ export function MarketingManagerCopilot({
   }
 
   function handleLaunchWizard(action?: MarketingCampaignAction) {
-    if (action?.draftUpdates) {
-      sessionStorage.setItem(
-        "keh_pending_ai_campaign",
-        JSON.stringify({
-          draftUpdates: action.draftUpdates,
-          changes: action.changes,
-          summary: action.summary,
-          suggestedStep: action.suggestedStep,
-        })
-      );
-    }
+    if (action?.draftUpdates) stashPendingAiCampaign(action);
     setIsOpen(false);
     router.push("/campaigns/new");
   }
 
-  const starterSuggestions = [
+  const starterSuggestions: { title: string; query: string; intent: AssistantIntent }[] = [
     {
       title: "💡 Brainstorm 3 Campaign Ideas",
       query: "Give me 3 high-converting marketing campaign ideas for our business.",

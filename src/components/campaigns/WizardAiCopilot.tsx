@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import {
   Sparkles,
@@ -13,7 +13,15 @@ import {
   Wand2,
 } from "lucide-react";
 import { useCampaign } from "./CampaignContext";
-import type { MarketingAssistantResponse, MarketingIdea } from "@/types";
+import { useMarketingAssistant } from "@/hooks/useMarketingAssistant";
+import type { AssistantIntent, FieldChangeNotification, MarketingIdea } from "@/types";
+
+/** Fired on window to ask the in-wizard copilot something (detail: { prompt, intent }). */
+export const WIZARD_ASK_EVENT = "keh:wizard-ask";
+
+export function askWizardCopilot(prompt: string, intent: AssistantIntent = "chat") {
+  window.dispatchEvent(new CustomEvent(WIZARD_ASK_EVENT, { detail: { prompt, intent } }));
+}
 
 export function WizardAiCopilot() {
   const {
@@ -25,13 +33,24 @@ export function WizardAiCopilot() {
 
   const [isOpen, setIsOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [lastMessage, setLastMessage] = useState<string | null>(null);
-  const [ideas, setIdeas] = useState<MarketingIdea[]>([]);
-  const [error, setError] = useState("");
+  // Result of applying an idea locally (no request needed).
+  const [localNote, setLocalNote] = useState<string | null>(null);
+
+  const { messages, ask, loading, error } = useMarketingAssistant({
+    onAction: (action) =>
+      applyAiUpdates(
+        action.draftUpdates ?? {},
+        action.changes,
+        action.summary,
+        action.suggestedStep
+      ),
+  });
+  const lastReply = [...messages].reverse().find((m) => m.role === "assistant");
+  const lastMessage = localNote ?? lastReply?.content ?? null;
+  const ideas = [...messages].reverse().find((m) => m.ideas?.length)?.ideas ?? [];
 
   // Contextual quick suggestions per wizard step
-  const quickPrompts: { label: string; text: string; intent?: string }[] =
+  const quickPrompts: { label: string; text: string; intent?: AssistantIntent }[] =
     step === 0
       ? [
           {
@@ -73,7 +92,7 @@ export function WizardAiCopilot() {
           {
             label: "📱 Best Platform Mix",
             text: "Which platforms should I target for this campaign and why?",
-            intent: "fill",
+            intent: "chat",
           },
         ]
       : [
@@ -84,58 +103,25 @@ export function WizardAiCopilot() {
           },
         ];
 
-  async function handleSend(textToSend?: string, intent?: string) {
+  function handleSend(textToSend?: string, intent?: AssistantIntent) {
     const query = (textToSend || prompt).trim();
     if (!query || loading) return;
-
-    setError("");
-    setLoading(true);
     setIsOpen(true);
-
-    try {
-      const response = await fetch("/api/assistant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question: query,
-          currentDraft: draft,
-          currentStep: step,
-          actionIntent: intent || "chat",
-        }),
-      });
-
-      const data = (await response.json()) as MarketingAssistantResponse & {
-        error?: string;
-      };
-
-      if (!response.ok) {
-        throw new Error(
-          data.error || "Keh AI could not process your request right now."
-        );
-      }
-
-      setLastMessage(data.answer);
-      if (data.ideas && data.ideas.length > 0) {
-        setIdeas(data.ideas);
-      }
-
-      // If the AI took action to fill fields:
-      if (data.action?.draftUpdates && data.action.changes.length > 0) {
-        applyAiUpdates(
-          data.action.draftUpdates,
-          data.action.changes,
-          data.action.summary,
-          data.action.suggestedStep
-        );
-      }
-
-      if (!textToSend) setPrompt("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setLoading(false);
-    }
+    setLocalNote(null);
+    if (!textToSend) setPrompt("");
+    ask(query, { intent: intent ?? "chat", currentDraft: draft, currentStep: step });
   }
+
+  // Other wizard steps (e.g. "Ask AI Manager to Polish") ask through here,
+  // because this copilot can see the current draft.
+  useEffect(() => {
+    function onAsk(event: Event) {
+      const { prompt: text, intent } = (event as CustomEvent<{ prompt: string; intent?: AssistantIntent }>).detail;
+      handleSend(text, intent);
+    }
+    window.addEventListener(WIZARD_ASK_EVENT, onAsk);
+    return () => window.removeEventListener(WIZARD_ASK_EVENT, onAsk);
+  });
 
   function handleFormSubmit(e: FormEvent) {
     e.preventDefault();
@@ -156,7 +142,7 @@ export function WizardAiCopilot() {
       scheduledTime: idea.suggestedTime || draft.scheduledTime,
     };
 
-    const changes = [
+    const changes: FieldChangeNotification[] = [
       {
         field: "goal",
         label: "Campaign Goal",
@@ -182,9 +168,7 @@ export function WizardAiCopilot() {
     ];
 
     applyAiUpdates(updates, changes, `Applied idea: ${idea.title}`);
-    setLastMessage(
-      `Applied **${idea.title}**! I've filled in your goal, product, and promotion details.`
-    );
+    setLocalNote(`Applied "${idea.title}". I've filled in your goal, product and promotion details.`);
   }
 
   return (

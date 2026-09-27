@@ -1,17 +1,37 @@
+/**
+ * Keh AI marketing manager
+ *
+ * generateMarketingAdvice() answers the owner's marketing questions and can
+ * fill in the campaign wizard for them ("action"), always listing every field
+ * it changed and why. With OPENAI_API_KEY set it asks the model; otherwise —
+ * or if the model call fails or returns something unusable — a built-in
+ * guided engine answers from the business profile, catalog and results.
+ *
+ * Server-only: called from app/api/assistant/route.ts. Every response is
+ * sanitized (sanitizeResponse) so the wizard only ever receives real product
+ * IDs, valid future dates and bounded text.
+ */
+
 import type {
   BrandProfile,
   Business,
   CampaignDraft,
   CampaignGoal,
   FieldChangeNotification,
+  MarketingAssistantResponse,
   MarketingCampaignAction,
   MarketingIdea,
   Platform,
   Product,
 } from "@/types";
-import type { MarketingAssistantRequestSchema } from "@/lib/validation/schemas";
+import {
+  MarketingCampaignActionSchema,
+  MarketingIdeaSchema,
+  type MarketingAssistantRequestSchema,
+} from "@/lib/validation/schemas";
+import type { PostingSlot } from "@/lib/analytics";
 import { formatPrice } from "@/utils";
-import { nextWeekday, todayKey } from "@/utils/datetime";
+import { formatDateKey, nextWeekday, todayKey } from "@/utils/datetime";
 import { z } from "zod";
 
 type MarketingAssistantRequest = z.infer<
@@ -46,13 +66,17 @@ export interface MarketingAssistantContext {
     | "availability"
     | "aiNotes"
   >[];
-}
-
-export interface MarketingAssistantResponse {
-  answer: string;
-  mode: "openai" | "guided";
-  action?: MarketingCampaignAction;
-  ideas?: MarketingIdea[];
+  /** The business's own results; null until published posts have metrics. */
+  performance: {
+    measuredPosts: number;
+    avgReach: number;
+    reachGrowthPct: number | null;
+    bestProductName?: string;
+    bestPlatform?: Platform;
+    insights: string[];
+  } | null;
+  /** Best time to post: from results, or the Friday-evening default. */
+  slot: PostingSlot;
 }
 
 const OpenAIResponseSchema = z.object({
@@ -65,105 +89,39 @@ const OpenAIResponseSchema = z.object({
   ),
 });
 
-const StructuredOpenAIResultSchema = z.object({
-  answer: z.string(),
-  ideas: z
-    .array(
-      z.object({
-        id: z.string(),
-        title: z.string(),
-        category: z.enum([
-          "PROMOTION",
-          "PRODUCT_SPOTLIGHT",
-          "ENGAGEMENT",
-          "SEASONAL",
-          "ANNOUNCEMENT",
-        ]),
-        summary: z.string(),
-        hook: z.string(),
-        suggestedGoal: z.enum([
-          "PROMOTE_PRODUCT",
-          "GET_MORE_ORDERS",
-          "GET_STORE_VISITS",
-          "ANNOUNCEMENT",
-          "NEW_PRODUCT",
-          "PROMOTION",
-          "KEEP_PAGE_ACTIVE",
-        ]),
-        suggestedProductId: z.string().optional(),
-        suggestedProductName: z.string().optional(),
-        suggestedPromotion: z.string().optional(),
-        suggestedDuration: z.string().optional(),
-        suggestedPlatforms: z.array(
-          z.enum(["FACEBOOK", "INSTAGRAM", "TIKTOK"])
-        ),
-        suggestedDate: z.string().optional(),
-        suggestedTime: z.string().optional(),
-        captionPreview: z.string().optional(),
-      })
-    )
-    .optional(),
-  action: z
-    .object({
-      type: z.enum([
-        "FILL_FIELDS",
-        "UPDATE_CAPTIONS",
-        "NAVIGATE_STEP",
-        "SUGGEST_IDEAS",
-      ]),
-      summary: z.string(),
-      draftUpdates: z
-        .object({
-          goal: z
-            .enum([
-              "PROMOTE_PRODUCT",
-              "GET_MORE_ORDERS",
-              "GET_STORE_VISITS",
-              "ANNOUNCEMENT",
-              "NEW_PRODUCT",
-              "PROMOTION",
-              "KEEP_PAGE_ACTIVE",
-              "",
-            ])
-            .optional(),
-          productId: z.string().optional(),
-          promotion: z.string().optional(),
-          duration: z.string().optional(),
-          instructions: z.string().optional(),
-          scheduledDate: z.string().optional(),
-          scheduledTime: z.string().optional(),
-          platforms: z
-            .array(z.enum(["FACEBOOK", "INSTAGRAM", "TIKTOK"]))
-            .optional(),
-          captions: z
-            .object({
-              FACEBOOK: z.string().optional(),
-              INSTAGRAM: z.string().optional(),
-              TIKTOK: z.string().optional(),
-            })
-            .optional(),
-        })
-        .optional(),
-      suggestedStep: z.number().int().min(0).max(4).optional(),
-      changes: z.array(
-        z.object({
-          field: z.string(),
-          label: z.string(),
-          oldValue: z
-            .union([z.string(), z.array(z.string()), z.null()])
-            .optional(),
-          newValue: z.union([z.string(), z.array(z.string())]),
-          reason: z.string(),
-        })
-      ),
-    })
-    .optional(),
+/**
+ * Model output is parsed leniently: a usable answer is kept even when an
+ * idea or the action is malformed — those parts are validated one by one
+ * (ideas) or repaired/dropped by sanitizeResponse (action).
+ */
+const StructuredResultSchema = z.object({
+  answer: z.string().min(1),
+  ideas: z.array(z.unknown()).optional(),
+  action: z.unknown().optional(),
 });
+const LenientActionSchema = MarketingCampaignActionSchema.extend({
+  // Clamped to 0–4 during sanitizing instead of rejecting the reply.
+  suggestedStep: z.number().optional(),
+});
+
+/** Models often send `null` for "not set"; treat it as absent. */
+function stripNulls(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripNulls);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, v]) => v !== null)
+        .map(([k, v]) => [k, stripNulls(v)])
+    );
+  }
+  return value;
+}
 
 function chooseProduct(
   question: string,
   products: MarketingAssistantContext["products"],
-  currentProductId?: string
+  currentProductId?: string,
+  bestProductName?: string
 ): MarketingAssistantContext["products"][number] | null {
   const normalizedQuestion = question.toLocaleLowerCase();
   const availableProducts = products.filter(
@@ -183,6 +141,10 @@ function chooseProduct(
     if (current) return current;
   }
 
+  // Next, the product with the best results so far:
+  const best = availableProducts.find((p) => p.name === bestProductName);
+  if (best) return best;
+
   // Next, pick product on promo:
   const promoProduct = availableProducts.find(
     (p) => p.promoPrice !== undefined
@@ -192,7 +154,9 @@ function chooseProduct(
   return availableProducts[0];
 }
 
-function getCallToAction(context: MarketingAssistantContext): string {
+function getCallToAction(
+  context: Pick<MarketingAssistantContext, "business" | "brandProfile">
+): string {
   const { business, brandProfile } = context;
   if (brandProfile) {
     switch (brandProfile.defaultCTA) {
@@ -248,7 +212,7 @@ function buildPlatformCaptions(
   const locationText = business.location
     ? `📍 Visit us: ${business.name}, ${business.location}`
     : `📍 Find us at ${business.name}`;
-  const cta = getCallToAction({ business, brandProfile, products: [product] });
+  const cta = getCallToAction({ business, brandProfile });
   const brandTag = `#${business.name.replace(/[^A-Za-z0-9]/g, "")}`;
   const isTaglish = business.preferredLanguage === "TAGLISH";
 
@@ -422,6 +386,12 @@ export function generateMarketingIdeas(
   return allIdeas.slice(0, count);
 }
 
+/** Fields an intent is allowed to change; unlisted intents may fill everything. */
+const SCOPED_FIELDS: Partial<Record<string, string[]>> = {
+  captions: ["captions"],
+  schedule: ["scheduledDate", "scheduledTime"],
+};
+
 /**
  * Intelligent field filling and in-website control engine.
  * Determines what fields in the website to update, builds change notifications,
@@ -460,7 +430,8 @@ function determineCampaignControl(
   const product = chooseProduct(
     request.question,
     products,
-    currentDraft?.productId
+    currentDraft?.productId,
+    context.performance?.bestProductName
   );
   if (!product) {
     return {
@@ -525,13 +496,16 @@ function determineCampaignControl(
     if (!platforms.includes("TIKTOK")) platforms.push("TIKTOK");
   }
 
-  // Determine Schedule
-  const defaultDate = nextWeekday(todayKey(), 5); // Friday
-  const scheduledDate =
-    currentDraft?.scheduledDate && currentDraft.scheduledDate !== ""
-      ? currentDraft.scheduledDate
-      : defaultDate;
-  const scheduledTime = currentDraft?.scheduledTime || "18:00";
+  // Determine Schedule — the best slot, unless the owner already picked one
+  const { slot } = context;
+  const wantsNewTime =
+    request.actionIntent === "schedule" || /\b(when|best time|schedule)\b/.test(question);
+  const keepOwnerTime = !wantsNewTime && Boolean(currentDraft?.scheduledDate);
+  const scheduledDate = keepOwnerTime ? currentDraft!.scheduledDate! : nextWeekday(todayKey(), slot.weekday);
+  const scheduledTime = keepOwnerTime ? currentDraft?.scheduledTime || slot.time : slot.time;
+  const slotReason = slot.fromResults
+    ? `Your posts on ${slot.label} have reached the most people so far.`
+    : `${slot.label} is a good default until Keh learns from your results.`;
 
   // Build platform captions
   const instructions =
@@ -629,7 +603,7 @@ function determineCampaignControl(
       label: "Publish Date",
       oldValue: currentDraft?.scheduledDate || "None",
       newValue: scheduledDate,
-      reason: `Scheduled for Friday evening when small business engagement peaks in Asia/Manila.`,
+      reason: slotReason,
     });
   }
 
@@ -639,7 +613,7 @@ function determineCampaignControl(
       label: "Publish Time",
       oldValue: currentDraft?.scheduledTime || "None",
       newValue: `${scheduledTime} (Asia/Manila)`,
-      reason: `Picked 6:00 PM for optimal after-work viewing.`,
+      reason: slotReason,
     });
   }
 
@@ -655,6 +629,26 @@ function determineCampaignControl(
     scheduledTime,
   };
 
+  // "Polish captions" / "best time" only touch those fields.
+  const scoped = SCOPED_FIELDS[request.actionIntent ?? "chat"];
+  if (scoped) {
+    const scopedUpdates = Object.fromEntries(
+      Object.entries(draftUpdates).filter(([key]) => scoped.includes(key))
+    ) as Partial<CampaignDraft>;
+    return {
+      action: {
+        type: request.actionIntent === "captions" ? "UPDATE_CAPTIONS" : "FILL_FIELDS",
+        summary:
+          request.actionIntent === "captions"
+            ? `Rewrote your captions for ${product.name}`
+            : `Scheduled for ${slot.label}`,
+        draftUpdates: scopedUpdates,
+        changes: changes.filter((c) => scoped.includes(c.field)),
+      },
+      explanation: "",
+    };
+  }
+
   const action: MarketingCampaignAction = {
     type: "FILL_FIELDS",
     summary: `Configured "${GOAL_LABELS[goal]}" campaign for ${product.name}`,
@@ -665,7 +659,7 @@ function determineCampaignControl(
 
   return {
     action,
-    explanation: `I've configured your campaign fields for **${product.name}**!`,
+    explanation: `I've configured your campaign fields for ${product.name}!`,
   };
 }
 
@@ -682,26 +676,35 @@ function createGuidedMarketingResponse(
   const product = chooseProduct(
     question,
     products,
-    request.currentDraft?.productId
+    request.currentDraft?.productId,
+    context.performance?.bestProductName
   );
 
-  // If user asked about analytics/metrics
+  // If user asked about analytics/metrics — answer from the business's results
   if (
     /\b(analytics|performance|reach|engagement|results|views|clicks|followers|underperform|why did|measure|track)\b/.test(
       normalizedQuestion
     )
   ) {
-    return {
-      answer: [
-        "I can't verify live post performance yet—the analytics currently shown in Keh are sample data, not synced results from your social accounts.",
-        "",
-        "For a useful review once live data is connected, compare posts on the same platform and track reach, interactions, and clicks. Change one variable at a time (format, offer, or posting time) to know what made the impact.",
-        "",
-        "In the meantime, I can help you draft your next campaign or brainstorm creative marketing ideas for your products!",
-      ].join("\n"),
-      mode: "guided",
-      ideas: generateMarketingIdeas(context, 3),
-    };
+    const perf = context.performance;
+    const answer = perf
+      ? [
+          `Here's what your last ${perf.measuredPosts} published posts show:`,
+          "",
+          ...perf.insights.map((line) => `• ${line}`),
+          "",
+          perf.bestProductName
+            ? `Want me to plan a campaign around ${perf.bestProductName} for ${context.slot.label}?`
+            : `Want me to plan your next campaign for ${context.slot.label}?`,
+        ]
+      : [
+          "There aren't results from your published posts yet, so I can't say what's working for you specifically.",
+          "",
+          "Once your posts go live, Keh tracks reach, interactions and clicks for each one. Compare posts on the same platform and change one thing at a time (format, offer or posting time) to see what made the difference.",
+          "",
+          "In the meantime, I can draft your next campaign or brainstorm ideas for your products.",
+        ];
+    return { answer: answer.join("\n"), mode: "guided", ideas: generateMarketingIdeas(context, 3) };
   }
 
   // Check if this is an idea generation request
@@ -713,6 +716,26 @@ function createGuidedMarketingResponse(
   const ideas = generateMarketingIdeas(context, 3);
 
   // Build informing text
+  if (action && action.changes.length > 0 && request.actionIntent === "captions") {
+    return {
+      answer: `I rewrote your captions for ${product?.name || "your product"}. Check each platform tab and tweak anything that doesn't sound like you.`,
+      mode: "guided",
+      action,
+    };
+  }
+  if (action && action.changes.length > 0 && request.actionIntent === "schedule") {
+    const date = action.draftUpdates?.scheduledDate;
+    const time = action.draftUpdates?.scheduledTime;
+    return {
+      answer: [
+        `I set your post for ${date ? formatDateKey(date) : "your next best slot"}${time ? ` at ${time}` : ""} (Manila time).`,
+        "",
+        action.changes[0]?.reason ?? "",
+      ].join("\n").trim(),
+      mode: "guided",
+      action,
+    };
+  }
   if (action && action.changes.length > 0) {
     const changesList = action.changes
       .map(
@@ -779,7 +802,7 @@ function createGuidedMarketingResponse(
       "",
       `• **Creative Angle**: Lead with an authentic customer moment and show the real ₱${price} price point.`,
       `• **Format**: Short preparation video or carousel post.`,
-      `• **Timing**: Friday at 6:00 PM for maximum evening social engagement.`,
+      `• **Timing**: ${context.slot.label}${context.slot.fromResults ? " (your best-performing time)" : ""}.`,
       `• **Call to Action**: ${callToAction}`,
       "",
       "Would you like me to fill out a campaign with this strategy right now? Just let me know or click one of the ideas below!",
@@ -790,38 +813,188 @@ function createGuidedMarketingResponse(
 }
 
 function createSystemPrompt(context: MarketingAssistantContext): string {
+  const today = todayKey();
   return [
-    "You are Keh, an elite, proactive, and thoughtful marketing manager for small business owners.",
-    "Your goal is to handle giving creative, strategic marketing ideas AND to take direct control of the in-website process of posting content by generating structured field updates for the campaign wizard.",
+    "You are Keh, a warm, practical marketing manager for a small business in the Philippines. The owner makes business decisions; you handle the marketing: ideas, captions, platforms and timing.",
+    `Today is ${formatDateKey(today)} (${today}), Asia/Manila time.`,
     "",
-    "When asked to create, draft, fill, or schedule content, you MUST provide structured field updates in the 'action' object and inform the user of every change made.",
-    "Fields you control in the campaign wizard:",
-    "- goal: 'PROMOTE_PRODUCT' | 'GET_MORE_ORDERS' | 'GET_STORE_VISITS' | 'ANNOUNCEMENT' | 'NEW_PRODUCT' | 'PROMOTION' | 'KEEP_PAGE_ACTIVE'",
-    "- productId: exact ID of a product from the context products list",
-    "- promotion: string offer e.g. '15% off this weekend' or 'Buy 1 Get 1 free'",
-    "- duration: string e.g. 'Friday – Sunday only'",
-    "- instructions: string creative brief",
-    "- platforms: array of ['FACEBOOK', 'INSTAGRAM', 'TIKTOK']",
-    "- captions: object with platform keys (FACEBOOK, INSTAGRAM, TIKTOK)",
-    "- scheduledDate: YYYY-MM-DD",
-    "- scheduledTime: HH:mm",
-    "- changes: array of { field, label, oldValue, newValue, reason } detailing every single change you made.",
+    "Respond with ONE JSON object and nothing else (no markdown fences):",
+    `{
+  "answer": "Plain text for the owner, under 180 words. Short paragraphs or lines starting with •. No markdown (no ** or #).",
+  "ideas": [ /* optional: 2-3 ideas when brainstorming */
+    { "id": "short-kebab-id", "title": "...", "category": "PROMOTION|PRODUCT_SPOTLIGHT|ENGAGEMENT|SEASONAL|ANNOUNCEMENT",
+      "summary": "...", "hook": "...", "suggestedGoal": "<goal>", "suggestedProductId": "<id from products>",
+      "suggestedProductName": "...", "suggestedPromotion": "...", "suggestedDuration": "...",
+      "suggestedPlatforms": ["FACEBOOK","INSTAGRAM","TIKTOK"], "suggestedDate": "YYYY-MM-DD", "suggestedTime": "HH:MM",
+      "captionPreview": "..." }
+  ],
+  "action": { /* only when the owner asks you to create, fill, write, rewrite or schedule something */
+    "type": "FILL_FIELDS" | "UPDATE_CAPTIONS",
+    "summary": "One line, e.g. Set up a weekend promo for Matcha Latte",
+    "draftUpdates": { /* ONLY the fields you change */
+      "goal": "PROMOTE_PRODUCT|GET_MORE_ORDERS|GET_STORE_VISITS|ANNOUNCEMENT|NEW_PRODUCT|PROMOTION|KEEP_PAGE_ACTIVE",
+      "productId": "<id from products>", "promotion": "...", "duration": "...", "instructions": "...",
+      "platforms": ["FACEBOOK","INSTAGRAM","TIKTOK"],
+      "captions": { "FACEBOOK": "...", "INSTAGRAM": "...", "TIKTOK": "..." },
+      "scheduledDate": "YYYY-MM-DD", "scheduledTime": "HH:MM"
+    },
+    "suggestedStep": 0-4 /* optional wizard step to show: 0 goal, 1 content, 2 platforms, 3 review, 4 publish */,
+    "changes": [ { "field": "<draftUpdates key>", "label": "Human label", "oldValue": "...", "newValue": "...", "reason": "Why, in one sentence" } ]
+  }
+}`,
     "",
-    "You also provide 2-3 marketing ideas in the 'ideas' array with catchy hooks, angles, and suggested parameters.",
-    "Be warm, realistic, concise, and encourage small business owners. Use the business's location, language preferences (Taglish / English), and brand details accurately.",
-    "Return JSON format matching the schema.",
-    `Business and product context:\n${JSON.stringify(context)}`,
-  ].join("\n\n");
+    "Rules:",
+    "- Every field in draftUpdates must have a matching entry in changes, so the owner sees exactly what you changed.",
+    "- productId / suggestedProductId must be an id from the products list, and only ACTIVE products. Never invent products or prices.",
+    "- Only add a promotion if the owner asked for one or the product has a promoPrice. Don't promise discounts the owner didn't approve.",
+    "- Dates are today or later (YYYY-MM-DD); times are 24-hour HH:MM Manila time. Prefer the recommended posting slot below.",
+    "- Captions: one per selected platform, in the business's preferred language and brand tone, ending with the business's call to action. Facebook: warm and story-led. Instagram: short lines, a few hashtags. TikTok: a hook line plus a 3-step video plan for the owner.",
+    '- If the request intent is "captions", change only captions. If it is "schedule", change only scheduledDate and scheduledTime.',
+    "- Keh saves and schedules posts; it does not publish them yet. Never claim a post was published.",
+    "- Only cite performance numbers that appear in the context. If performance is null, say there are no results yet.",
+    "",
+    `Recommended posting slot: ${context.slot.label}${context.slot.fromResults ? " (from this business's results)" : " (default; no results yet)"}, around ${context.slot.time}.`,
+    `Business, brand, products and performance:\n${JSON.stringify({
+      business: context.business,
+      brandProfile: context.brandProfile,
+      products: context.products,
+      performance: context.performance,
+    })}`,
+  ].join("\n");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sanitizing — applied to every response, model or guided
+// ─────────────────────────────────────────────────────────────────────────────
+
+const FIELD_LABELS: Record<string, string> = {
+  goal: "Campaign Goal",
+  productId: "Spotlight Product",
+  promotion: "Promotion Offer",
+  duration: "Campaign Duration",
+  instructions: "Instructions",
+  platforms: "Social Platforms",
+  captions: "Platform Captions",
+  scheduledDate: "Publish Date",
+  scheduledTime: "Publish Time",
+};
+
+const DATE_RE =/^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+
+/** Removes markdown emphasis/headings; the chat UI shows plain text. */
+function plainText(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/(^|[\s•(])\*(\S[^*\n]*?)\*/g, "$1$2")
+    .replace(/^#{1,6}\s*/gm, "");
+}
+
+function sanitizeResponse(
+  response: MarketingAssistantResponse,
+  context: MarketingAssistantContext
+): MarketingAssistantResponse {
+  const today = todayKey();
+  const activeIds = new Set(
+    context.products.filter((p) => p.availability === "ACTIVE").map((p) => p.id)
+  );
+  const validDate = (d?: string) => Boolean(d && DATE_RE.test(d) && d >= today);
+  const validTime = (t?: string) => Boolean(t && TIME_RE.test(t));
+
+  const ideas = response.ideas?.slice(0, 4).map((idea): MarketingIdea => {
+    const knownProduct = idea.suggestedProductId && activeIds.has(idea.suggestedProductId);
+    const platforms = [...new Set(idea.suggestedPlatforms)];
+    return {
+      ...idea,
+      title: clip(plainText(idea.title), 120),
+      summary: clip(plainText(idea.summary), 400),
+      hook: clip(plainText(idea.hook), 200),
+      suggestedProductId: knownProduct ? idea.suggestedProductId : undefined,
+      suggestedProductName: knownProduct ? idea.suggestedProductName : undefined,
+      suggestedPlatforms: platforms.length ? platforms : ["FACEBOOK", "INSTAGRAM"],
+      suggestedDate: validDate(idea.suggestedDate) ? idea.suggestedDate : undefined,
+      suggestedTime: validTime(idea.suggestedTime) ? idea.suggestedTime : undefined,
+      captionPreview: idea.captionPreview ? clip(idea.captionPreview, 600) : undefined,
+    };
+  });
+
+  let action = response.action;
+  if (action?.draftUpdates) {
+    const u: Partial<CampaignDraft> = { ...action.draftUpdates };
+    if (u.productId !== undefined && !activeIds.has(u.productId)) delete u.productId;
+    if (u.scheduledDate !== undefined && !validDate(u.scheduledDate)) delete u.scheduledDate;
+    if (u.scheduledTime !== undefined && !validTime(u.scheduledTime)) delete u.scheduledTime;
+    if (u.platforms) {
+      u.platforms = [...new Set(u.platforms)];
+      if (u.platforms.length === 0) delete u.platforms;
+    }
+    if (u.captions) {
+      const captions = Object.fromEntries(
+        Object.entries(u.captions)
+          .filter(([, text]) => typeof text === "string" && text.trim())
+          .map(([platform, text]) => [platform, clip(text!.trim(), 2200)])
+      );
+      if (Object.keys(captions).length) u.captions = captions;
+      else delete u.captions;
+    }
+    if (u.promotion !== undefined) u.promotion = clip(u.promotion, 120);
+    if (u.duration !== undefined) u.duration = clip(u.duration, 120);
+    if (u.instructions !== undefined) u.instructions = clip(u.instructions, 1000);
+
+    const kept = new Set(Object.keys(u));
+    const changes: FieldChangeNotification[] = action.changes
+      .filter((c) => kept.has(c.field))
+      .slice(0, 12)
+      .map((c) => ({ ...c, reason: clip(plainText(c.reason), 300) }));
+    // The owner must see every field that changed, even if the model didn't list it.
+    for (const field of kept) {
+      if (changes.some((c) => c.field === field)) continue;
+      const value = u[field as keyof CampaignDraft];
+      changes.push({
+        field,
+        label: FIELD_LABELS[field] ?? field,
+        newValue: Array.isArray(value)
+          ? value.map(String)
+          : typeof value === "object" && value
+            ? `Updated for ${Object.keys(value).join(", ")}`
+            : String(value ?? ""),
+        reason: "Set by Keh as part of this change.",
+      });
+    }
+    action =
+      kept.size > 0
+        ? {
+            ...action,
+            summary: clip(plainText(action.summary), 160),
+            draftUpdates: u,
+            changes,
+            suggestedStep:
+              typeof action.suggestedStep === "number"
+                ? Math.min(Math.max(action.suggestedStep, 0), 4)
+                : undefined,
+          }
+        : undefined;
+  } else {
+    action = undefined;
+  }
+
+  return {
+    answer: clip(plainText(response.answer).trim(), 4000),
+    mode: response.mode,
+    ...(action && { action }),
+    ...(ideas?.length && { ideas }),
+  };
 }
 
 export async function generateMarketingAdvice(
   request: MarketingAssistantRequest,
   context: MarketingAssistantContext
 ): Promise<MarketingAssistantResponse> {
+  const guided = () => sanitizeResponse(createGuidedMarketingResponse(request, context), context);
+
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return createGuidedMarketingResponse(request, context);
-  }
+  if (!apiKey) return guided();
 
   try {
     const messages = [
@@ -829,7 +1002,13 @@ export async function generateMarketingAdvice(
       ...request.history.map(({ role, content }) => ({ role, content })),
       {
         role: "user",
-        content: `${request.question}\n\nCurrent Draft Context: ${JSON.stringify(request.currentDraft || {})}`,
+        content: [
+          request.question,
+          "",
+          `Request intent: ${request.actionIntent ?? "chat"}`,
+          `Current wizard step: ${request.currentStep ?? "not in the wizard"}`,
+          `Current draft: ${JSON.stringify(request.currentDraft ?? {})}`,
+        ].join("\n"),
       },
     ];
 
@@ -843,46 +1022,43 @@ export async function generateMarketingAdvice(
         model: process.env.OPENAI_MODEL || "gpt-4o-mini",
         messages,
         response_format: { type: "json_object" },
-        max_tokens: 1200,
+        max_tokens: 2000,
         temperature: 0.6,
       }),
       signal: AbortSignal.timeout(30_000),
     });
 
     if (!response.ok) {
-      console.warn(
-        `OpenAI request failed with status ${response.status}, falling back to guided mode.`
-      );
-      return createGuidedMarketingResponse(request, context);
+      console.warn(`OpenAI request failed with status ${response.status}; using guided mode.`);
+      return guided();
     }
 
-    const rawData = await response.json();
-    const parsed = OpenAIResponseSchema.safeParse(rawData);
-    if (!parsed.success) {
-      return createGuidedMarketingResponse(request, context);
-    }
+    const parsed = OpenAIResponseSchema.safeParse(await response.json());
+    const content = parsed.success ? parsed.data.choices[0]?.message.content?.trim() : undefined;
+    if (!content) return guided();
 
-    const content = parsed.data.choices[0]?.message.content?.trim();
-    if (!content) {
-      return createGuidedMarketingResponse(request, context);
-    }
-
-    const structured = StructuredOpenAIResultSchema.safeParse(
-      JSON.parse(content)
-    );
+    const structured = StructuredResultSchema.safeParse(stripNulls(JSON.parse(content)));
     if (!structured.success) {
-      // If JSON structure wasn't 100% matched, fallback to guided
-      return createGuidedMarketingResponse(request, context);
+      console.warn("OpenAI returned an unexpected shape; using guided mode.", structured.error.issues[0]);
+      return guided();
     }
 
-    return {
-      answer: structured.data.answer,
-      mode: "openai",
-      action: structured.data.action as MarketingCampaignAction,
-      ideas: structured.data.ideas as MarketingIdea[],
-    };
+    const { answer, ideas: rawIdeas = [], action: rawAction } = structured.data;
+    const ideas = rawIdeas.flatMap((idea) => {
+      const parsedIdea = MarketingIdeaSchema.safeParse(idea);
+      return parsedIdea.success ? [parsedIdea.data] : [];
+    });
+    const action = rawAction === undefined ? undefined : LenientActionSchema.safeParse(rawAction);
+    if (action && !action.success) {
+      console.warn("OpenAI returned an unusable campaign action; keeping the answer only.", action.error.issues[0]);
+    }
+
+    return sanitizeResponse(
+      { answer, ideas, action: action?.success ? action.data : undefined, mode: "openai" },
+      context
+    );
   } catch (error) {
-    console.error("OpenAI call failed, seamlessly falling back to guided engine:", error);
-    return createGuidedMarketingResponse(request, context);
+    console.error("OpenAI call failed; using guided mode.", error);
+    return guided();
   }
 }

@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useState } from "react";
 import { Sparkles, ArrowRight } from "lucide-react";
 import { useCampaign } from "./CampaignContext";
+import { askWizardCopilot } from "./WizardAiCopilot";
 import { SocialPlatformBadge } from "@/components/ui/social-platform-badge";
 import type { Platform } from "@/types";
 
@@ -36,15 +37,10 @@ export function ContentStep() {
   }
 
   function handleAskAiToPolish() {
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("keh:open-ai-copilot", {
-          detail: {
-            prompt: `Make the ${PLATFORM_LABELS[activePlatform]} caption punchier, high-converting, and tailored for our ${business.name} customers.`,
-          },
-        })
-      );
-    }
+    askWizardCopilot(
+      `Make the ${PLATFORM_LABELS[activePlatform]} caption punchier, high-converting, and tailored for our ${business.name} customers.`,
+      "captions"
+    );
   }
 
   const caption = draft.captions[activePlatform] ?? "";

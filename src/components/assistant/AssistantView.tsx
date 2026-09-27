@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { HintBox } from "@/components/ui/hint-box";
-import { useMarketingAssistant } from "@/hooks/useMarketingAssistant";
+import { stashPendingAiCampaign, useMarketingAssistant } from "@/hooks/useMarketingAssistant";
 import type { AIRecommendation, AssistantIntent, Business, MarketingCampaignAction, MarketingIdea } from "@/types";
 
 const STARTER_PROMPTS: { label: string; text: string; intent: AssistantIntent }[] = [
@@ -72,17 +72,7 @@ export function AssistantView({
   }
 
   function handleLaunchWizard(action?: MarketingCampaignAction) {
-    if (action) {
-      sessionStorage.setItem(
-        "keh_pending_ai_campaign",
-        JSON.stringify({
-          draftUpdates: action.draftUpdates,
-          changes: action.changes,
-          summary: action.summary,
-          suggestedStep: action.suggestedStep,
-        })
-      );
-    }
+    if (action) stashPendingAiCampaign(action);
     router.push("/campaigns/new");
   }
 
