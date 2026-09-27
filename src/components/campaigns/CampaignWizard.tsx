@@ -8,7 +8,7 @@ import { ContentStep } from "./ContentStep";
 import { PlatformStep } from "./PlatformStep";
 import { ReviewStep } from "./ReviewStep";
 import { PublishStep } from "./PublishStep";
-import type { Product } from "@/types";
+import type { CampaignGoal, Product } from "@/types";
 
 function WizardBody() {
   const { step } = useCampaign();
@@ -37,6 +37,7 @@ export function CampaignWizard(props: {
   products: Product[];
   business: WizardBusiness;
   initialProductId?: string;
+  initialGoal?: CampaignGoal;
 }) {
   return (
     <CampaignProvider {...props}>

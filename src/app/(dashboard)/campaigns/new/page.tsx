@@ -2,15 +2,15 @@ import { CampaignWizard } from "@/components/campaigns/CampaignWizard";
 import { getCurrentContext } from "@/lib/auth/context";
 import { getBrandProfile } from "@/services/business.service";
 import { getProducts } from "@/services/product.service";
-import { DEFAULT_CTA_LABELS, LANGUAGE_LABELS, TONE_LABELS } from "@/constants";
+import { CAMPAIGN_GOALS, DEFAULT_CTA_LABELS, LANGUAGE_LABELS, TONE_LABELS } from "@/constants";
 
 export default async function NewCampaignPage({
   searchParams,
 }: {
-  searchParams: Promise<{ product?: string }>;
+  searchParams: Promise<{ product?: string; goal?: string }>;
 }) {
   const { business } = await getCurrentContext();
-  const [products, brand, { product }] = await Promise.all([
+  const [products, brand, { product, goal }] = await Promise.all([
     getProducts(business.id),
     getBrandProfile(business.id),
     searchParams,
@@ -20,6 +20,7 @@ export default async function NewCampaignPage({
     <CampaignWizard
       products={products.filter((p) => p.availability === "ACTIVE")}
       initialProductId={product}
+      initialGoal={CAMPAIGN_GOALS.find((g) => g.value === goal)?.value}
       business={{
         name: business.name,
         location: business.location,
