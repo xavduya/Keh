@@ -1,17 +1,16 @@
 "use client";
 
 import { createContext, useContext, useState } from "react";
-import type { CampaignDraft } from "@/types";
-import { mockProducts } from "@/data/mock-products";
+import type { CampaignDraft, Product } from "@/types";
 
-const defaultDraft: CampaignDraft = {
-  goal: "PROMOTE_PRODUCT",
-  productId: mockProducts[0].id,
-  promotion: "15% off",
-  duration: "Friday – Sunday",
-  instructions: "Target college students.",
-  scheduledDate: "2026-10-02",
-  scheduledTime: "18:00",
+const emptyDraft: CampaignDraft = {
+  goal: "",
+  productId: "",
+  promotion: "",
+  duration: "",
+  instructions: "",
+  scheduledDate: "",
+  scheduledTime: "",
   platforms: ["FACEBOOK", "INSTAGRAM"],
   captions: {},
   editId: null,
@@ -19,6 +18,7 @@ const defaultDraft: CampaignDraft = {
 
 interface CampaignContextValue {
   draft: CampaignDraft;
+  products: Product[];
   step: number;
   setDraft: (d: Partial<CampaignDraft>) => void;
   nextStep: () => void;
@@ -35,8 +35,18 @@ export function useCampaign() {
   return ctx;
 }
 
-export function CampaignProvider({ children }: { children: React.ReactNode }) {
-  const [draft, setDraftState] = useState<CampaignDraft>(defaultDraft);
+export function CampaignProvider({
+  children,
+  products,
+}: {
+  children: React.ReactNode;
+  products: Product[];
+}) {
+  const firstProductId = products[0]?.id ?? "";
+  const [draft, setDraftState] = useState<CampaignDraft>({
+    ...emptyDraft,
+    productId: firstProductId,
+  });
   const [step, setStep] = useState(0);
 
   function setDraft(updates: Partial<CampaignDraft>) {
@@ -44,7 +54,8 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
   }
 
   function generateCaptions(variation = false) {
-    const product = mockProducts.find((p) => p.id === draft.productId) ?? mockProducts[0];
+    const product = products.find((p) => p.id === draft.productId) ?? products[0];
+    if (!product) return;
     const offer = draft.promotion ? ` ${draft.promotion} ${draft.duration}!` : "";
     const opening = variation ? "Your next café break is calling." : "Study break? Deserve mo 'to!";
 
@@ -70,7 +81,7 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <CampaignContext.Provider
-      value={{ draft, step, setDraft, nextStep, prevStep, setStep, generateCaptions }}
+      value={{ draft, products, step, setDraft, nextStep, prevStep, setStep, generateCaptions }}
     >
       {children}
     </CampaignContext.Provider>

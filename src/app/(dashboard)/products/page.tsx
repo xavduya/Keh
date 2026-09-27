@@ -3,9 +3,13 @@ import Link from "next/link";
 import { Plus, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { PostStatusBadge } from "@/components/ui/post-status-badge";
-import { mockProducts } from "@/data/mock-products";
+import { getProducts } from "@/services/product.service";
+import type { Product } from "@/types";
 
-function ProductCard({ product }: { product: typeof mockProducts[0] }) {
+// Demo business ID — will come from Supabase session in Phase 5
+const DEMO_BUSINESS_ID = "biz_001";
+
+function ProductCard({ product }: { product: Product }) {
   return (
     <article className="bg-white rounded-[12px] border border-[#e9e9ef] overflow-hidden flex flex-col">
       <div className="relative w-full h-[220px]">
@@ -47,7 +51,9 @@ function ProductCard({ product }: { product: typeof mockProducts[0] }) {
   );
 }
 
-export default function ProductsPage() {
+export default async function ProductsPage() {
+  const products = await getProducts(DEMO_BUSINESS_ID);
+
   return (
     <div className="space-y-5">
       <PageHeader
@@ -62,7 +68,7 @@ export default function ProductsPage() {
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {mockProducts.map((product) => (
+        {products.map((product) => (
           <ProductCard key={product.id} product={product} />
         ))}
       </div>

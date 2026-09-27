@@ -5,7 +5,6 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { useCampaign } from "./CampaignContext";
 import { CAMPAIGN_GOALS } from "@/constants";
-import { mockProducts } from "@/data/mock-products";
 import {
   Package, ShoppingCart, MapPin, Megaphone, Sparkles, Tag, Heart,
 } from "lucide-react";
@@ -22,7 +21,7 @@ const GOAL_ICONS: Record<CampaignGoal, React.ComponentType<{ size?: number; clas
 };
 
 export function GoalStep() {
-  const { draft, setDraft, nextStep } = useCampaign();
+  const { draft, products, setDraft, nextStep } = useCampaign();
 
   return (
     <div className="space-y-6">
@@ -70,7 +69,7 @@ export function GoalStep() {
           </button>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {mockProducts.map((p) => {
+          {products.map((p) => {
             const isSelected = draft.productId === p.id;
             return (
               <button

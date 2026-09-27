@@ -5,7 +5,6 @@ import { ArrowRight } from "lucide-react";
 import { useCampaign } from "./CampaignContext";
 import { SocialPlatformBadge } from "@/components/ui/social-platform-badge";
 import { CAMPAIGN_GOALS } from "@/constants";
-import { mockProducts } from "@/data/mock-products";
 import type { Platform } from "@/types";
 
 const PLATFORM_LABELS: Record<Platform, string> = {
@@ -15,8 +14,8 @@ const PLATFORM_LABELS: Record<Platform, string> = {
 };
 
 export function ReviewStep() {
-  const { draft, nextStep, prevStep } = useCampaign();
-  const product = mockProducts.find((p) => p.id === draft.productId) ?? mockProducts[0];
+  const { draft, products, nextStep, prevStep } = useCampaign();
+  const product = products.find((p) => p.id === draft.productId) ?? products[0];
   const goalLabel = CAMPAIGN_GOALS.find((g) => g.value === draft.goal)?.label ?? draft.goal;
 
   return (

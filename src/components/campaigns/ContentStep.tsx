@@ -5,7 +5,6 @@ import { useState } from "react";
 import { Sparkles, ArrowRight } from "lucide-react";
 import { useCampaign } from "./CampaignContext";
 import { SocialPlatformBadge } from "@/components/ui/social-platform-badge";
-import { mockProducts } from "@/data/mock-products";
 import type { Platform } from "@/types";
 
 const PLATFORMS: Platform[] = ["FACEBOOK", "INSTAGRAM", "TIKTOK"];
@@ -16,10 +15,10 @@ const PLATFORM_LABELS: Record<Platform, string> = {
 };
 
 export function ContentStep() {
-  const { draft, setDraft, nextStep, prevStep, generateCaptions } = useCampaign();
+  const { draft, products, setDraft, nextStep, prevStep, generateCaptions } = useCampaign();
   const [activePlatform, setActivePlatform] = useState<Platform>("FACEBOOK");
 
-  const product = mockProducts.find((p) => p.id === draft.productId) ?? mockProducts[0];
+  const product = products.find((p) => p.id === draft.productId) ?? products[0];
 
   function handleCaptionChange(val: string) {
     setDraft({ captions: { ...draft.captions, [activePlatform]: val } });
