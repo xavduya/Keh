@@ -87,7 +87,6 @@ export default async function DashboardPage() {
             <span style={{ fontSize: 25 }}>👋</span>
           </>
         }
-        subtitle="Here's what your social media looks like today."
         action={
           <span className="text-[13px] text-[#7b7b8b] flex items-center gap-2">
             <Calendar size={14} />
