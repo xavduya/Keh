@@ -14,7 +14,7 @@ import type {
   UpdateBusiness,
   UpdateBrandProfile,
 } from "@/lib/supabase/database.types";
-import { createServerClient } from "@/lib/supabase/server";
+import { createAdminClient, createServerClient } from "@/lib/supabase/server";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Row → domain mappers
@@ -211,4 +211,53 @@ export async function getSubscription(
 
   if (error) throw error;
   return data ? toSubscription(data) : null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Plan usage (migration 010)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type QuotaResult =
+  | { allowed: true }
+  | { allowed: false; reason: "ai_campaigns" | "scheduled_posts" | "not_owner" | "no_subscription" }
+  /** The usage functions aren't available (e.g. migration 010 not applied). */
+  | { allowed: true; unavailable: true };
+
+/**
+ * Counts one campaign (and its scheduled posts) against the plan's monthly
+ * limits, atomically. Call before creating the campaign; if creating it then
+ * fails, call releaseCampaignQuota with the same numbers.
+ */
+export async function consumeCampaignQuota(
+  businessId: string,
+  scheduledPosts: number
+): Promise<QuotaResult> {
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc("consume_campaign_quota", {
+    p_business_id: businessId,
+    p_scheduled_posts: scheduledPosts,
+  });
+  if (error) {
+    console.error("Plan usage check unavailable — is migration 010 applied?", error.message);
+    return { allowed: true, unavailable: true };
+  }
+  const result = data?.[0];
+  if (result?.allowed) return { allowed: true };
+  return { allowed: false, reason: (result?.reason ?? "no_subscription") as "ai_campaigns" };
+}
+
+/**
+ * Gives back usage counted by consumeCampaignQuota when the campaign could
+ * not be saved. Server-only: runs with the secret key, because owners must
+ * not be able to lower their own counters.
+ */
+export async function releaseCampaignQuota(
+  businessId: string,
+  scheduledPosts: number
+): Promise<void> {
+  const { error } = await createAdminClient().rpc("release_campaign_quota", {
+    p_business_id: businessId,
+    p_scheduled_posts: scheduledPosts,
+  });
+  if (error) console.error("Could not release plan usage", error.message);
 }

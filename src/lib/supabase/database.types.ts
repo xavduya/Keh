@@ -338,6 +338,14 @@ export type Database = {
         Args: { per_minute: number; per_day: number };
         Returns: { allowed: boolean; retry_after_seconds: number }[];
       };
+      consume_campaign_quota: {
+        Args: { p_business_id: string; p_scheduled_posts: number };
+        Returns: { allowed: boolean; reason: string }[];
+      };
+      release_campaign_quota: {
+        Args: { p_business_id: string; p_scheduled_posts: number };
+        Returns: undefined;
+      };
     };
     CompositeTypes: Record<never, never>;
   };

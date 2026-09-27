@@ -68,7 +68,7 @@ src/
 ├── types/index.ts     # domain model (single source of truth for TS types)
 ├── constants/         # platforms, statuses, goals, nav, plans, DEFAULT_TIMEZONE, MAX_UPLOAD_BYTES
 └── utils/             # index.ts (formatPrice, initials…) + datetime.ts (Manila-time helpers)
-supabase/migrations/   # 001–005 base schema, 007_hardening, 008_product_images (Storage bucket), 009_ai_rate_limit
+supabase/migrations/   # 001–005 base schema, 007_hardening, 008_product_images (Storage bucket), 009_ai_rate_limit, 010_plan_usage
 supabase/seed.sql      # dev seed — NOT a migration; needs a matching auth user first
 scripts/seed-demo-data.mjs  # `npm run seed:demo -- --email <owner>`: 8 weeks of published demo posts + metrics (--reset removes them, --list lists businesses)
 ```
@@ -96,7 +96,7 @@ There is no `error.tsx` / `loading.tsx` / `not-found.tsx` yet.
 - Intent scoping: `captions` may only change captions; `schedule` only date/time.
 - Hand-off to the wizard: `stashPendingAiCampaign` (sessionStorage, read by `CampaignContext` *after mount*) or `dispatchAiCampaign` (window event while the wizard is open). The owner can review the change log and undo (`AiChangesBanner`).
 - **Rate limiting:** `/api/assistant` calls the `consume_ai_request()` RPC (migration 009) before any AI work — 8 requests/minute and 100/day per user (`AI_LIMITS` in the route), 429 + `Retry-After` when exceeded. It fails open (logs an error) if the migration isn't applied.
-- Not yet done: AI usage isn't counted against `subscriptions.ai_campaigns_used` (the plan's "AI campaigns" number).
+- **Plan usage:** every saved campaign (drafts included) uses one of the plan's monthly AI campaigns; each scheduled post uses one scheduled post. `saveCampaign` calls `consumeCampaignQuota` (RPC `consume_campaign_quota`, migration 010, locks the subscription row, rolls counters over at `usage_resets_at`) before creating the campaign and `releaseCampaignQuota` (secret key only) if creating it fails. Fails open if 010 isn't applied.
 
 ### Rules
 
@@ -105,7 +105,7 @@ There is no `error.tsx` / `loading.tsx` / `not-found.tsx` yet.
 - **Social platforms go through `SocialPublisher`** (`lib/social/publisher.interface.ts`). Nothing publishes to real platforms yet: "Schedule" and "Publish now" save posts as `SCHEDULED` (TikTok as `ACTION_REQUIRED`, since the owner finishes it manually); "Save draft" saves `DRAFT`.
 - **Supabase clients:** `createBrowserClient()` in client code; `createServerClient()` in server code (respects RLS); `createAdminClient()` bypasses RLS — trusted server code only.
 - **RLS ownership chain:** `auth.uid() → profiles.id → businesses.owner_id → <table>.business_id`, via `get_user_business_ids()`. Every new table needs RLS enabled plus policies following this chain. Storage paths for product photos are `<business_id>/<uuid>.<ext>`.
-- **Migrations:** 001–005, 007 and 008 are applied to the project in `.env`; 009 (AI rate limit) must be applied with the AI assistant branch. Once a migration is applied, fix schema/RLS with a new numbered migration, not by editing it. `social_accounts` token columns aren't selectable by users — select explicit columns, not `*`.
+- **Migrations:** 001–005, 007 and 008 are applied to the project in `.env`; **009 (AI rate limit) and 010 (plan usage) still need to be applied** — until then both fail open and log an error. Once a migration is applied, fix schema/RLS with a new numbered migration, not by editing it. `social_accounts` token columns aren't selectable by users — select explicit columns, not `*`.
 
 ### Domain model
 
@@ -128,7 +128,7 @@ There is no `error.tsx` / `loading.tsx` / `not-found.tsx` yet.
 ## Still mock / not wired
 
 - **Dashboard:** only the connected-accounts widget is still mock.
-- **Mock pages:** analytics, assistant ("Ask Keh" returns a template), social accounts (connect/disconnect is local state), settings (toggles do nothing). Subscription shows the real plan/usage, but usage counters aren't incremented yet.
+- **Mock pages:** social accounts (connect/disconnect is local state), settings (toggles do nothing). Subscription shows the real plan and usage; upgrading isn't wired.
 - **Unwired controls:** content Reuse/Duplicate/Edit, calendar post chips and week view, "Why this recommendation?", notifications bell, subscription Upgrade/Manage. There's no campaign edit/delete and no product delete yet.
 - **Metrics:** nothing collects real platform metrics yet. `getPosts()` reads the latest `post_metrics` row per post (0 when missing); for demos, `npm run seed:demo` backfills published posts with generated metrics. Insights and the Home recommendation are template text from `lib/analytics.ts`, not AI.
 
