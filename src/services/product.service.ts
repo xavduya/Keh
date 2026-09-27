@@ -9,8 +9,6 @@ import type { Product } from "@/types";
 import type { ProductRow, InsertProduct } from "@/lib/supabase/database.types";
 import { createServerClient } from "@/lib/supabase/server";
 
-const PRODUCT_IMAGE_BUCKET = "product-images";
-
 function toProduct(row: ProductRow): Product {
   return {
     id: row.id,
@@ -117,26 +115,4 @@ export async function updateProduct(
 
   if (error) throw error;
   return toProduct(data);
-}
-
-/**
- * Uploads a product photo to Storage under the business's folder and
- * returns its public URL. RLS on storage.objects only allows writes inside
- * folders of businesses the user owns.
- */
-export async function uploadProductImage(
-  businessId: string,
-  file: File
-): Promise<string> {
-  const supabase = await createServerClient();
-  const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-  const path = `${businessId}/${crypto.randomUUID()}.${ext}`;
-
-  const { error } = await supabase.storage
-    .from(PRODUCT_IMAGE_BUCKET)
-    .upload(path, file, { contentType: file.type });
-  if (error) throw error;
-
-  return supabase.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path).data
-    .publicUrl;
 }

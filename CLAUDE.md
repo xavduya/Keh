@@ -6,7 +6,7 @@ Keh is an AI-powered social media management SaaS for **small business owners**.
 
 The app is a refactor of an earlier vanilla-JS prototype (referred to as "@Sites" / formerly "Suki"). It is being built as a **hackathon MVP**: favour the smallest change that makes the core loop real over polish.
 
-**Core loop (working end to end on Supabase):** sign up → add a product → create a campaign in the wizard → it appears in Campaigns, Calendar, Content and the Dashboard. Analytics, the AI assistant, brand profile editing, social accounts, subscription and settings still run on mock data or local state.
+**Core loop (working end to end on Supabase):** sign up → add a product → create a campaign in the wizard → it appears in Campaigns, Calendar, Content and the Dashboard. The brand profile (business details + brand voice) is editable and saved. Analytics, the AI assistant, social accounts and settings still run on mock data or local state; subscription shows the real plan but upgrades aren't wired.
 
 The audit and prioritized roadmap live in [docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) (gaps are referenced as G1–G24 below).
 
@@ -42,14 +42,15 @@ src/
 │   ├── calendar/      # server page → CalendarView (real posts)
 │   ├── content/       # server page → ContentView (real posts)
 │   ├── products/      # server page → ProductsView + ProductDialog + actions.ts (saveProduct)
-│   └── analytics, assistant, brand, social-accounts, subscription, settings  # still mock / local state
+│   ├── brand/         # server page → components/brand/BrandForm + actions.ts (saveBrandProfile)
+│   └── analytics, assistant, social-accounts, subscription, settings  # server pages, mostly mock data
 ├── app/page.tsx       # redirects to /dashboard
 ├── components/
 │   ├── auth/          # AuthForm (shared login/signup form)
 │   ├── layout/        # AppSidebar, TopBar, DashboardLayout
 │   ├── ui/            # shadcn Button + Keh primitives (StatCard, PageHeader, badges, AvailabilityBadge…)
 │   └── campaigns/     # CampaignWizard + CampaignContext + 5 steps: Goal → Content → Platforms → Review → Publish
-├── services/          # data access — business, product, campaign = Supabase; analytics, recommendation, social-account = mock
+├── services/          # data access — business, product, campaign, storage = Supabase; analytics, recommendation, social-account = mock
 ├── data/              # typed mock data (still used by the mock services and mock pages)
 ├── lib/
 │   ├── env.ts         # validated env vars (publicEnv, getSupabaseSecretKey)
@@ -77,7 +78,7 @@ There is no `app/api/`, no `src/hooks/`, and no `error.tsx` / `loading.tsx` / `n
 - **Dialogs:** native `<dialog>` + `showModal()` (focus trap, Escape and backdrop for free) — see `ProductDialog`.
 - **Services** map DB rows (snake_case) to domain types (camelCase) with a `toX(row)` mapper; they use `createServerClient()` so RLS applies, and also filter by `businessId` explicitly.
 - **Dates/times:** use `@/utils/datetime` (`manilaDateKey`, `manilaTime`, `todayKey`, `manilaToUtcIso`, `formatDateKey`…). The DB stores UTC `timestamptz`; the UI shows `Asia/Manila`. Never slice ISO strings.
-- **Images:** product photos are optional (`imageUrl` may be `""`), so guard every `<Image>`.
+- **Images:** upload through `storage.service.ts` (`submittedFile`, `validateImage`, `uploadBusinessImage`) — files go to the `product-images` bucket under `<business_id>/…` (brand images under `<business_id>/brand/…`). Photos are optional (`imageUrl` may be `""`), so guard every `<Image>`.
 
 ### Rules
 
@@ -86,7 +87,7 @@ There is no `app/api/`, no `src/hooks/`, and no `error.tsx` / `loading.tsx` / `n
 - **Social platforms go through `SocialPublisher`** (`lib/social/publisher.interface.ts`). Nothing publishes to real platforms yet: "Schedule" and "Publish now" save posts as `SCHEDULED` (TikTok as `ACTION_REQUIRED`, since the owner finishes it manually); "Save draft" saves `DRAFT`.
 - **Supabase clients:** `createBrowserClient()` in client code; `createServerClient()` in server code (respects RLS); `createAdminClient()` bypasses RLS — trusted server code only.
 - **RLS ownership chain:** `auth.uid() → profiles.id → businesses.owner_id → <table>.business_id`, via `get_user_business_ids()`. Every new table needs RLS enabled plus policies following this chain. Storage paths for product photos are `<business_id>/<uuid>.<ext>`.
-- **Migrations:** 001–005 and 007 are applied to the project in `.env`; **008 must be applied** (SQL editor) before photo uploads work. Once a migration is applied, fix schema/RLS with a new numbered migration, not by editing it. `social_accounts` token columns aren't selectable by users — select explicit columns, not `*`.
+- **Migrations:** 001–005, 007 and 008 are applied to the project in `.env`. Once a migration is applied, fix schema/RLS with a new numbered migration, not by editing it. `social_accounts` token columns aren't selectable by users — select explicit columns, not `*`.
 
 ### Domain model
 
@@ -109,7 +110,7 @@ There is no `app/api/`, no `src/hooks/`, and no `error.tsx` / `loading.tsx` / `n
 ## Still mock / not wired
 
 - **Dashboard:** the "Recommended for this week" card (hard-coded Matcha Latte), stat cards, insight strip and connected-accounts widget are mock.
-- **Mock pages:** analytics, assistant ("Ask Keh" returns a template), brand (form "Save" only flashes), social accounts (connect/disconnect is local state), subscription (mock plan/usage), settings (toggles do nothing).
+- **Mock pages:** analytics, assistant ("Ask Keh" returns a template), social accounts (connect/disconnect is local state), settings (toggles do nothing). Subscription shows the real plan/usage, but usage counters aren't incremented yet.
 - **Unwired controls:** content Reuse/Duplicate/Edit, calendar post chips and week view, "Why this recommendation?", notifications bell, subscription Upgrade/Manage. There's no campaign edit/delete and no product delete yet.
 - **Metrics:** `reach` is always 0 on real posts until a metrics pipeline writes `post_metrics`, so "Top Performing" in Content is empty.
 
@@ -124,7 +125,7 @@ There is no `app/api/`, no `src/hooks/`, and no `error.tsx` / `loading.tsx` / `n
 | 7 | Planned | Social adapters (Facebook, Instagram; TikTok later) + scheduled-publish job runner |
 | 8 | Planned | Metrics & learning — analytics pipeline, AI recommendations |
 
-Next priorities (see `docs/GAP_ANALYSIS.md` → "Progress"): brand profile save → error/loading states → AI captions → demo polish (hide dead controls, real dashboard stats).
+Next priorities (see `docs/GAP_ANALYSIS.md` → "Progress"): AI captions → demo polish (hide dead controls, real dashboard stats, delete product/campaign) → error/loading states.
 
 The README's phase table is out of date. The older `.bob/artifacts/keh-refactoring-progress-missing-features.html` predates the gap analysis.
 
