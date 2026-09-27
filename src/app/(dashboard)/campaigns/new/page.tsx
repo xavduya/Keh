@@ -7,10 +7,10 @@ import { CAMPAIGN_GOALS, DEFAULT_CTA_LABELS, LANGUAGE_LABELS, TONE_LABELS } from
 export default async function NewCampaignPage({
   searchParams,
 }: {
-  searchParams: Promise<{ product?: string; goal?: string }>;
+  searchParams: Promise<{ product?: string; goal?: string; promotion?: string }>;
 }) {
   const { business } = await getCurrentContext();
-  const [products, brand, { product, goal }] = await Promise.all([
+  const [products, brand, { product, goal, promotion }] = await Promise.all([
     getProducts(business.id),
     getBrandProfile(business.id),
     searchParams,
@@ -21,6 +21,7 @@ export default async function NewCampaignPage({
       products={products.filter((p) => p.availability === "ACTIVE")}
       initialProductId={product}
       initialGoal={CAMPAIGN_GOALS.find((g) => g.value === goal)?.value}
+      initialPromotion={promotion?.slice(0, 120)}
       business={{
         name: business.name,
         location: business.location,

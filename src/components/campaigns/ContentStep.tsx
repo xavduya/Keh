@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useState } from "react";
 import { Sparkles, ArrowRight } from "lucide-react";
 import { useCampaign } from "./CampaignContext";
+import { askWizardCopilot } from "./WizardAiCopilot";
 import { SocialPlatformBadge } from "@/components/ui/social-platform-badge";
 import type { Platform } from "@/types";
 
@@ -15,9 +16,17 @@ const PLATFORM_LABELS: Record<Platform, string> = {
 };
 
 export function ContentStep() {
-  const { draft, setDraft, nextStep, prevStep, generateCaptions, product, business } = useCampaign();
+  const {
+    draft,
+    setDraft,
+    nextStep,
+    prevStep,
+    generateCaptions,
+    product,
+    business,
+    aiUpdatedFields,
+  } = useCampaign();
   const [activePlatform, setActivePlatform] = useState<Platform>("FACEBOOK");
-
 
   function handleCaptionChange(val: string) {
     setDraft({ captions: { ...draft.captions, [activePlatform]: val } });
@@ -27,7 +36,15 @@ export function ContentStep() {
     generateCaptions(true);
   }
 
+  function handleAskAiToPolish() {
+    askWizardCopilot(
+      `Make the ${PLATFORM_LABELS[activePlatform]} caption punchier, high-converting, and tailored for our ${business.name} customers.`,
+      "captions"
+    );
+  }
+
   const caption = draft.captions[activePlatform] ?? "";
+  const isAiGenerated = aiUpdatedFields.includes("captions");
 
   return (
     <div className="space-y-5">
@@ -64,23 +81,43 @@ export function ContentStep() {
         {/* Caption editor */}
         <div className="space-y-3">
           <label className="flex flex-col gap-1.5">
-            <span className="text-[13px] font-[600] text-[#262535]">
-              {activePlatform === "TIKTOK" ? "Hook & caption" : "Caption"}
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-[13px] font-[600] text-[#262535]">
+                {activePlatform === "TIKTOK" ? "Hook & caption" : "Caption"}
+              </span>
+              {isAiGenerated && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-[#f0edff] px-2 py-0.5 text-[11px] font-[700] text-[#5849da]">
+                  <Sparkles size={11} /> AI Generated
+                </span>
+              )}
+            </div>
             <textarea
               value={caption}
               onChange={(e) => handleCaptionChange(e.target.value)}
               rows={10}
-              className="px-3 py-2.5 border border-[#e9e9ef] rounded-[8px] text-[14px] bg-white focus:outline-none focus:border-[#5849da] transition-colors resize-y w-full"
+              className={`px-3 py-2.5 border rounded-[8px] text-[14px] focus:outline-none focus:border-[#5849da] transition-colors resize-y w-full ${
+                isAiGenerated
+                  ? "border-[#a499ed] bg-[#fcfbfe] ring-1 ring-[#5849da]/20"
+                  : "border-[#e9e9ef] bg-white"
+              }`}
             />
           </label>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button
               onClick={handleRegenerate}
+              type="button"
               className="flex items-center gap-2 px-3 py-2 rounded-[7px] border border-[#e9e9ef] text-[13px] font-[600] hover:bg-[#f7f8fb] transition-colors"
             >
               <Sparkles size={13} />
-              Regenerate
+              Regenerate Template
+            </button>
+            <button
+              onClick={handleAskAiToPolish}
+              type="button"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-[7px] bg-[#f0edff] text-[#5849da] text-[13px] font-[600] hover:bg-[#e6e1fa] transition-colors"
+            >
+              <Sparkles size={13} />
+              Ask AI Manager to Polish
             </button>
           </div>
           {activePlatform === "TIKTOK" ? (

@@ -1,8 +1,9 @@
 "use client";
 
-import { Bell, Menu } from "lucide-react";
+import { Bell, Menu, Sparkles } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { NAV_ITEMS, BOTTOM_NAV_ITEMS } from "@/constants";
+import { openAiCopilot } from "@/hooks/useMarketingAssistant";
 
 const ALL_NAV = [...NAV_ITEMS, ...BOTTOM_NAV_ITEMS];
 
@@ -46,9 +47,18 @@ export function TopBar({ onMenuClick, userInitials }: TopBarProps) {
         </span>
       </div>
 
-      {/* Right: demo badge + tagline + bell + avatar */}
+      {/* Right: demo badge + Ask AI button + bell + avatar */}
       <div className="flex items-center gap-3">
-        <span className="hidden md:block text-[13px] text-[#7b7b8b]">
+        <button
+          type="button"
+          onClick={() => openAiCopilot()}
+          className="inline-flex items-center gap-1.5 rounded-full border border-[#d8d2fb] bg-[#f0edff]/70 px-3 py-1.5 text-[12px] font-[600] text-[#5849da] transition-all hover:bg-[#5849da] hover:text-white"
+        >
+          <Sparkles size={13} className="text-[#5849da] group-hover:text-white" />
+          <span>Ask Keh AI</span>
+        </button>
+
+        <span className="hidden lg:block text-[13px] text-[#7b7b8b]">
           handle your marketing here, Keh!
         </span>
         <div className="w-px h-4 bg-[#e9e9ef] hidden sm:block" />

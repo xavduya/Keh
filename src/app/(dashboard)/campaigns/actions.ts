@@ -6,6 +6,12 @@ import { getCurrentContext } from "@/lib/auth/context";
 import { CampaignDraftSchema } from "@/lib/validation/schemas";
 import { createCampaignWithPosts } from "@/services/campaign.service";
 import { getProductById } from "@/services/product.service";
+import {
+  consumeCampaignQuota,
+  getSubscription,
+  releaseCampaignQuota,
+} from "@/services/business.service";
+import { formatManilaDate } from "@/utils/datetime";
 import { goalLabel } from "@/constants";
 import { manilaToUtcIso } from "@/utils/datetime";
 import type { CampaignDraft, PostStatus } from "@/types";
@@ -61,6 +67,14 @@ export async function saveCampaign(
     return platform === "TIKTOK" ? "ACTION_REQUIRED" : "SCHEDULED";
   };
 
+  // Every saved campaign uses one of the plan's monthly AI campaigns;
+  // scheduled posts (not drafts) use its monthly scheduled posts.
+  const scheduledPosts = intent === "draft" ? 0 : platforms.length;
+  const quota = await consumeCampaignQuota(business.id, scheduledPosts);
+  if (!quota.allowed) {
+    return { error: await quotaMessage(business.id, quota.reason) };
+  }
+
   try {
     await createCampaignWithPosts(business.id, {
       goal: data.goal,
@@ -78,11 +92,28 @@ export async function saveCampaign(
     });
   } catch (err) {
     console.error("saveCampaign failed", err);
+    if (!("unavailable" in quota)) await releaseCampaignQuota(business.id, scheduledPosts);
     return { error: "We couldn't save your campaign. Please try again." };
   }
 
-  for (const path of ["/campaigns", "/calendar", "/content", "/dashboard", "/products"]) {
+  for (const path of ["/campaigns", "/calendar", "/content", "/dashboard", "/products", "/subscription"]) {
     revalidatePath(path);
   }
   redirect("/campaigns");
+}
+
+async function quotaMessage(
+  businessId: string,
+  reason: "ai_campaigns" | "scheduled_posts" | "not_owner" | "no_subscription"
+): Promise<string> {
+  if (reason === "not_owner" || reason === "no_subscription") {
+    return "We couldn't find your plan. Please refresh the page and try again.";
+  }
+  const sub = await getSubscription(businessId);
+  const resets = sub ? ` It resets on ${formatManilaDate(sub.usage.resetsAt, { month: "long", day: "numeric" })}.` : "";
+  if (reason === "ai_campaigns") {
+    return `You've used all ${sub?.usage.aiCampaignsLimit ?? ""} campaigns in your plan this month.${resets} Upgrade your plan to keep creating.`.replace("  ", " ");
+  }
+  const left = sub ? Math.max(sub.usage.scheduledPostsLimit - sub.usage.scheduledPostsUsed, 0) : 0;
+  return `This would go over your plan's scheduled posts (${left} left this month).${resets} Pick fewer platforms, save it as a draft, or upgrade your plan.`;
 }

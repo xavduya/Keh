@@ -222,6 +222,19 @@ export type AiRecommendationRow = {
   action_goal: DbCampaignGoal | null;
   dismissed_at: string | null;
   created_at: string;
+  // Added in migration 012
+  product_id: string | null;
+  details: RecommendationDetails;
+  generated_by: "ai" | "guided";
+};
+
+/** ai_recommendations.details (jsonb) */
+export type RecommendationDetails = {
+  platforms?: DbPlatform[];
+  weekday?: number;
+  time?: string;
+  promotion?: string;
+  chips?: string[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -333,6 +346,18 @@ export type Database = {
       get_user_business_ids: {
         Args: Record<string, never>;
         Returns: string[];
+      };
+      consume_ai_request: {
+        Args: { per_minute: number; per_day: number };
+        Returns: { allowed: boolean; retry_after_seconds: number }[];
+      };
+      consume_campaign_quota: {
+        Args: { p_business_id: string; p_scheduled_posts: number };
+        Returns: { allowed: boolean; reason: string }[];
+      };
+      release_campaign_quota: {
+        Args: { p_business_id: string; p_scheduled_posts: number };
+        Returns: undefined;
       };
     };
     CompositeTypes: Record<never, never>;

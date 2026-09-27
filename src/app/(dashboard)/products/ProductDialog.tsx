@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Product } from "@/types";
 import { saveProduct, type ProductFormState } from "./actions";
+import { PhotoPicker } from "./PhotoPicker";
 
 interface ProductDialogProps {
   /** null when adding a new product */
@@ -97,6 +98,8 @@ export function ProductDialog({ product, onClose }: ProductDialogProps) {
         {product && <input type="hidden" name="id" value={product.id} />}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <PhotoPicker name="image" currentUrl={product?.imageUrl || undefined} error={errors.image?.[0]} />
+
           <Field label="Name" name="name" errors={errors.name} className="sm:col-span-2">
             <input name="name" defaultValue={product?.name} placeholder="e.g. Matcha Latte" className={inputClass} {...invalid("name")} />
           </Field>
@@ -122,13 +125,6 @@ export function ProductDialog({ product, onClose }: ProductDialogProps) {
 
           <Field label="Description" name="description" errors={errors.description} className="sm:col-span-2">
             <textarea name="description" rows={3} defaultValue={product?.description} placeholder="What makes it special?" className={`${inputClass} resize-y`} {...invalid("description")} />
-          </Field>
-
-          <Field label="Photo" name="image" errors={errors.image} className="sm:col-span-2">
-            <input name="image" type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="text-[13px] text-brand-muted" {...invalid("image")} />
-            {product?.imageUrl && (
-              <span className="text-[12px] text-brand-muted">Leave empty to keep the current photo.</span>
-            )}
           </Field>
 
           <Field label="Product link (optional)" name="productUrl" errors={errors.productUrl} className="sm:col-span-2">

@@ -245,6 +245,14 @@ export interface AIRecommendation {
   actionLabel?: string;
   /** Suggested campaign goal if the user acts on this recommendation */
   actionGoal?: CampaignGoal;
+  /** The product this recommendation is about (pre-selected in the wizard). */
+  productId?: string;
+  /** Short strategy chips, e.g. "TikTok first", "Friday evening". */
+  chips: string[];
+  /** Offer to pre-fill, if the recommendation suggests one. */
+  promotion?: string;
+  /** Written by a language model ("ai") or the rules engine ("guided"). */
+  generatedBy: "ai" | "guided";
   createdAt: string;
 }
 
@@ -325,4 +333,75 @@ export interface CampaignDraft {
   captions: Partial<Record<Platform, string>>;
   /** ID of the post being edited; null for new */
   editId: string | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Marketing Manager AI & In-Website Control Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One field the AI marketing manager filled or changed, shown to the owner. */
+export interface FieldChangeNotification {
+  field: string;
+  label: string;
+  oldValue?: string | string[] | null;
+  newValue: string | string[];
+  reason: string;
+}
+
+export interface MarketingCampaignAction {
+  type: "FILL_FIELDS" | "UPDATE_CAPTIONS" | "NAVIGATE_STEP" | "SUGGEST_IDEAS";
+  summary: string;
+  draftUpdates?: Partial<CampaignDraft>;
+  suggestedStep?: number;
+  changes: FieldChangeNotification[];
+}
+
+export interface MarketingIdea {
+  id: string;
+  title: string;
+  category: "PROMOTION" | "PRODUCT_SPOTLIGHT" | "ENGAGEMENT" | "SEASONAL" | "ANNOUNCEMENT";
+  summary: string;
+  hook: string;
+  suggestedGoal: CampaignGoal;
+  suggestedProductId?: string;
+  suggestedProductName?: string;
+  suggestedPromotion?: string;
+  suggestedDuration?: string;
+  suggestedPlatforms: Platform[];
+  suggestedDate?: string;
+  suggestedTime?: string;
+  captionPreview?: string;
+}
+
+export interface AIUpdateRecord {
+  timestamp: number;
+  summary: string;
+  changes: FieldChangeNotification[];
+  previousDraft?: CampaignDraft;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI marketing manager
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** What the owner is asking the assistant to do. */
+export type AssistantIntent = "chat" | "ideas" | "fill" | "captions" | "schedule";
+
+/** Response from POST /api/assistant. */
+export interface MarketingAssistantResponse {
+  answer: string;
+  /** "ai" when a language model answered; "guided" for the built-in rules engine. */
+  mode: "ai" | "guided";
+  action?: MarketingCampaignAction;
+  ideas?: MarketingIdea[];
+}
+
+/** A message in an assistant conversation (client-side only). */
+export interface AssistantMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  mode?: MarketingAssistantResponse["mode"];
+  action?: MarketingCampaignAction;
+  ideas?: MarketingIdea[];
 }

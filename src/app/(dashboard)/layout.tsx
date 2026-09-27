@@ -6,6 +6,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
 
   return (
     <DashboardLayout
+      businessId={business.id}
       businessName={business.name}
       businessLocation={business.location}
       userName={user.fullName}

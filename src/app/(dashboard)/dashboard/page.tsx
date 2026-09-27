@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import {
-  Sparkles, BarChart2, Calendar, Tag, Megaphone,
+  Sparkles, Calendar, Tag, Megaphone,
   ChevronRight, Eye, Heart, FileText, Package, AlertTriangle,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
@@ -11,6 +11,9 @@ import { PostStatusBadge } from "@/components/ui/post-status-badge";
 import { getPosts } from "@/services/campaign.service";
 import { getProducts } from "@/services/product.service";
 import { findings, insights, periodSummary, postDateKey, recommendNextMove } from "@/lib/analytics";
+import { getRecommendations, recommendationsAreStale } from "@/services/recommendation.service";
+import { RecommendationCard, type RecommendationCardData } from "@/components/dashboard/RecommendationCard";
+import { toCardData } from "@/utils/recommendations";
 import { getConnectedAccounts } from "@/services/social-account.service";
 import { addDays, formatDateKey, manilaDateKey, manilaTime, manilaWeekdayHour, todayKey } from "@/utils/datetime";
 import { getCurrentContext } from "@/lib/auth/context";
@@ -78,10 +81,11 @@ const QUICK_ACTIONS: { label: string; icon: typeof Package; goal?: CampaignGoal 
 
 export default async function DashboardPage() {
   const { user, business } = await getCurrentContext();
-  const [posts, products, connectedAccounts] = await Promise.all([
+  const [posts, products, connectedAccounts, recommendations] = await Promise.all([
     getPosts(business.id),
     getProducts(business.id),
     getConnectedAccounts(business.id),
+    getRecommendations(business.id),
   ]);
   const firstName = user.fullName.split(" ")[0];
 
@@ -94,7 +98,16 @@ export default async function DashboardPage() {
   const summary = periodSummary(posts, todayDate);
   const found = findings(posts);
   const insightLines = insights(found, summary);
-  const recommendation = recommendNextMove(found, products);
+  // This week's stored recommendation (AI or guided); until one exists, the
+  // rules-based suggestion shows instantly while new ones are generated.
+  const fallback = recommendNextMove(found, products);
+  const card: RecommendationCardData = recommendations[0]
+    ? toCardData(recommendations[0], products)
+    : {
+        ...fallback,
+        basis: found.measuredCount > 0 ? "Based on your recent results" : "Based on your products",
+        generatedByAi: false,
+      };
   const upcomingCount = posts.filter(
     (p) => p.status === "SCHEDULED" && postDateKey(p) >= todayDate
   ).length;
@@ -120,66 +133,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4">
 
         {/* Recommendation card */}
-        <div className="bg-white rounded-[12px] border border-[#e9e9ef] overflow-hidden">
-          <div className="p-6">
-            <div className="flex items-center gap-2 text-[#5849da] text-[12px] font-[700] uppercase tracking-[0.06em] mb-4">
-              <Sparkles size={14} />
-              Recommended for this week
-            </div>
-            <div className="flex gap-5">
-              <div className="flex-1">
-                <h2 className="font-heading text-[22px] font-[750] tracking-[-0.03em] text-[#262535] leading-[1.2] mb-3">
-                  {recommendation.title}
-                </h2>
-                <p className="text-[14px] text-[#7b7b8b] leading-relaxed mb-4">
-                  {recommendation.body}
-                </p>
-                {recommendation.chips.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-5">
-                    {recommendation.chips.map((chip) => (
-                      <span
-                        key={chip}
-                        className="px-3 py-1.5 rounded-lg border border-[#e9e9ef] text-[13px] text-[#262535] bg-[#f7f8fb]"
-                      >
-                        {chip}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <Link
-                  href={recommendation.href}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-[8px] bg-[#5849da] text-white text-[14px] font-[600] hover:bg-[#4a3cc7] transition-colors"
-                >
-                  <Sparkles size={15} />
-                  {recommendation.cta}
-                </Link>
-              </div>
-              {recommendation.imageUrl && (
-                <div className="hidden sm:block relative w-[140px] h-[160px] rounded-[10px] overflow-hidden shrink-0">
-                  <Image
-                    src={recommendation.imageUrl}
-                    alt=""
-                    fill
-                    className="object-cover"
-                    sizes="140px"
-                    unoptimized
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-          <details className="group border-t border-[#e9e9ef] px-6 py-3">
-            <summary className="flex items-center justify-between cursor-pointer list-none text-[13px]">
-              <span className="flex items-center gap-2 text-[#7b7b8b]">
-                <BarChart2 size={13} />
-                {found.measuredCount > 0 ? "Based on your recent results" : "Based on your products"}
-              </span>
-              <span className="text-[#5849da] font-[600] group-open:hidden">Why this recommendation?</span>
-              <span className="text-[#5849da] font-[600] hidden group-open:inline">Hide</span>
-            </summary>
-            <p className="text-[13px] text-[#7b7b8b] mt-2 leading-relaxed">{recommendation.why}</p>
-          </details>
-        </div>
+        <RecommendationCard data={card} stale={recommendationsAreStale(recommendations)} />
 
         {/* Quick actions */}
         <div className="bg-white rounded-[12px] border border-[#e9e9ef] p-5">
