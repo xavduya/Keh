@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, LoaderCircle, RefreshCw, Sparkles, Wand2 } from "lucide-react";
 import { dismissRecommendation, refreshRecommendations } from "@/app/(dashboard)/recommendation-actions";
@@ -24,15 +24,8 @@ export function RecommendationList({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Generate this week's ideas in the background when needed.
-  const autoRefreshed = useRef(false);
-  useEffect(() => {
-    if (!stale || autoRefreshed.current) return;
-    autoRefreshed.current = true;
-    refreshRecommendations().then((result) => {
-      if (result.updated) router.refresh();
-    });
-  }, [stale, router]);
+  // No automatic generation here: Home generates this week's set, so the two
+  // pages never pay for it twice. Here the owner asks with "New ideas".
 
   function newIdeas() {
     setError(null);
@@ -76,9 +69,10 @@ export function RecommendationList({
       )}
 
       {recommendations.length === 0 ? (
-        <p className="mt-3 flex items-center gap-2 text-[12px] text-[#7b7b8b]">
-          <LoaderCircle size={13} className="animate-spin text-[#5849da]" />
-          Keh is putting together ideas for this week…
+        <p className="mt-3 text-[12px] text-[#7b7b8b]">
+          {stale
+            ? "No ideas for this week yet. Click New ideas and Keh will put some together."
+            : "You've gone through this week's ideas. Click New ideas for more."}
         </p>
       ) : (
         <div className="mt-3 space-y-4">

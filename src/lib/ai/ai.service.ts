@@ -34,7 +34,7 @@ import type { PostingSlot } from "@/lib/analytics";
 import { formatPrice } from "@/utils";
 import { formatDateKey, nextWeekday, todayKey } from "@/utils/datetime";
 import { z } from "zod";
-import { generateJson } from "./providers";
+import { activeProvider, generateJson } from "./providers";
 
 type MarketingAssistantRequest = z.infer<
   typeof MarketingAssistantRequestSchema
@@ -808,44 +808,167 @@ function createGuidedMarketingResponse(
   };
 }
 
-function createSystemPrompt(context: MarketingAssistantContext): string {
+const PLATFORM_VALUES = ["FACEBOOK", "INSTAGRAM", "TIKTOK"];
+const GOAL_VALUES = Object.keys(GOAL_LABELS);
+
+/**
+ * The reply's shape, sent as structured output (Gemini responseJsonSchema /
+ * OpenAI json_schema) instead of being spelled out in every prompt. Kept
+ * loose on purpose: StructuredResultSchema and sanitizeResponse still check
+ * every reply.
+ */
+const CHAT_REPLY_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    answer: {
+      type: "string",
+      description: "Plain text for the owner, under 180 words. Short paragraphs or lines starting with •. No markdown.",
+    },
+    ideas: {
+      type: "array",
+      description: "Only when brainstorming: 2-3 ideas.",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "short-kebab-id" },
+          title: { type: "string" },
+          category: { type: "string", enum: ["PROMOTION", "PRODUCT_SPOTLIGHT", "ENGAGEMENT", "SEASONAL", "ANNOUNCEMENT"] },
+          summary: { type: "string" },
+          hook: { type: "string" },
+          suggestedGoal: { type: "string", enum: GOAL_VALUES },
+          suggestedProductId: { type: "string", description: "An id from products" },
+          suggestedProductName: { type: "string" },
+          suggestedPromotion: { type: "string" },
+          suggestedDuration: { type: "string" },
+          suggestedPlatforms: { type: "array", items: { type: "string", enum: PLATFORM_VALUES } },
+          suggestedDate: { type: "string", description: "YYYY-MM-DD" },
+          suggestedTime: { type: "string", description: "HH:MM, 24-hour" },
+          captionPreview: { type: "string" },
+        },
+        required: ["id", "title", "category", "summary", "hook", "suggestedGoal", "suggestedPlatforms"],
+      },
+    },
+    action: {
+      type: "object",
+      description: "Only when the owner asks you to create, fill, write, rewrite or schedule something.",
+      properties: {
+        type: { type: "string", enum: ["FILL_FIELDS", "UPDATE_CAPTIONS"] },
+        summary: { type: "string", description: "One line, e.g. Set up a weekend promo for Matcha Latte" },
+        draftUpdates: {
+          type: "object",
+          description: "ONLY the fields you change.",
+          properties: {
+            goal: { type: "string", enum: GOAL_VALUES },
+            productId: { type: "string", description: "An id from products" },
+            promotion: { type: "string" },
+            duration: { type: "string" },
+            instructions: { type: "string" },
+            platforms: { type: "array", items: { type: "string", enum: PLATFORM_VALUES } },
+            captions: {
+              type: "object",
+              description: "One caption per selected platform.",
+              properties: {
+                FACEBOOK: { type: "string" },
+                INSTAGRAM: { type: "string" },
+                TIKTOK: { type: "string" },
+              },
+            },
+            scheduledDate: { type: "string", description: "YYYY-MM-DD" },
+            scheduledTime: { type: "string", description: "HH:MM, 24-hour Manila time" },
+          },
+        },
+        suggestedStep: {
+          type: "integer",
+          description: "Wizard step to show: 0 goal, 1 content, 2 platforms, 3 review, 4 publish",
+        },
+        changes: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              field: { type: "string", description: "The draftUpdates key" },
+              label: { type: "string" },
+              oldValue: { type: "string" },
+              newValue: { type: "string" },
+              reason: { type: "string", description: "Why, in one sentence" },
+            },
+            required: ["field", "label", "newValue", "reason"],
+          },
+        },
+      },
+      required: ["type", "summary", "draftUpdates", "changes"],
+    },
+  },
+  required: ["answer"],
+};
+
+/** The slice of the business context a prompt includes. */
+type PromptContext = Pick<MarketingAssistantContext, "business" | "brandProfile" | "performance"> & {
+  products: Partial<MarketingAssistantContext["products"][number]>[];
+  recentCaptions?: string[];
+};
+
+/**
+ * Only what this intent needs. Rewriting captions sends just the draft's
+ * product (in full) and the recent captions to avoid repeating; filling a
+ * campaign sends every active product with short descriptions; chat and
+ * ideas send shorter descriptions still and no captions.
+ */
+function promptContext(request: MarketingAssistantRequest, context: MarketingAssistantContext): PromptContext {
+  const intent = request.actionIntent ?? "chat";
+  const active = context.products.filter((p) => p.availability === "ACTIVE");
+  const draftProduct = active.find((p) => p.id === request.currentDraft?.productId);
+  const writesCaptions = intent === "fill" || intent === "captions";
+
+  const products =
+    intent === "captions" && draftProduct
+      ? [draftProduct]
+      : active.map((p) => ({
+          id: p.id,
+          name: p.name,
+          price: p.price,
+          promoPrice: p.promoPrice,
+          category: p.category,
+          description: clip(p.description, writesCaptions ? 200 : 120),
+          ...(p.aiNotes && { aiNotes: clip(p.aiNotes, writesCaptions ? 150 : 100) }),
+        }));
+
+  return {
+    business: context.business,
+    brandProfile: context.brandProfile,
+    products,
+    performance: context.performance,
+    ...(writesCaptions && { recentCaptions: (context.recentCaptions ?? []).map((c) => clip(c, 200)) }),
+  };
+}
+
+/** The wizard draft as the model sees it: captions only when rewriting them. */
+function draftForPrompt(request: MarketingAssistantRequest) {
+  const { captions, ...rest } = request.currentDraft ?? {};
+  if (request.actionIntent !== "captions" || !captions) return rest;
+  const platforms = rest.platforms?.length ? rest.platforms : (Object.keys(captions) as Platform[]);
+  return {
+    ...rest,
+    captions: Object.fromEntries(
+      platforms.filter((p) => captions[p]).map((p) => [p, clip(captions[p]!, 1000)])
+    ),
+  };
+}
+
+function createSystemPrompt(context: PromptContext, slot: PostingSlot): string {
   const today = todayKey();
   return [
     "You are Keh, a warm, practical marketing manager for a small business in the Philippines. The owner makes business decisions; you handle the marketing: ideas, captions, platforms and timing.",
     `Today is ${formatDateKey(today)} (${today}), Asia/Manila time.`,
-    "",
-    "Respond with ONE JSON object and nothing else (no markdown fences):",
-    `{
-  "answer": "Plain text for the owner, under 180 words. Short paragraphs or lines starting with •. No markdown (no ** or #).",
-  "ideas": [ /* optional: 2-3 ideas when brainstorming */
-    { "id": "short-kebab-id", "title": "...", "category": "PROMOTION|PRODUCT_SPOTLIGHT|ENGAGEMENT|SEASONAL|ANNOUNCEMENT",
-      "summary": "...", "hook": "...", "suggestedGoal": "<goal>", "suggestedProductId": "<id from products>",
-      "suggestedProductName": "...", "suggestedPromotion": "...", "suggestedDuration": "...",
-      "suggestedPlatforms": ["FACEBOOK","INSTAGRAM","TIKTOK"], "suggestedDate": "YYYY-MM-DD", "suggestedTime": "HH:MM",
-      "captionPreview": "..." }
-  ],
-  "action": { /* only when the owner asks you to create, fill, write, rewrite or schedule something */
-    "type": "FILL_FIELDS" | "UPDATE_CAPTIONS",
-    "summary": "One line, e.g. Set up a weekend promo for Matcha Latte",
-    "draftUpdates": { /* ONLY the fields you change */
-      "goal": "PROMOTE_PRODUCT|GET_MORE_ORDERS|GET_STORE_VISITS|ANNOUNCEMENT|NEW_PRODUCT|PROMOTION|KEEP_PAGE_ACTIVE",
-      "productId": "<id from products>", "promotion": "...", "duration": "...", "instructions": "...",
-      "platforms": ["FACEBOOK","INSTAGRAM","TIKTOK"],
-      "captions": { "FACEBOOK": "...", "INSTAGRAM": "...", "TIKTOK": "..." },
-      "scheduledDate": "YYYY-MM-DD", "scheduledTime": "HH:MM"
-    },
-    "suggestedStep": 0-4 /* optional wizard step to show: 0 goal, 1 content, 2 platforms, 3 review, 4 publish */,
-    "changes": [ { "field": "<draftUpdates key>", "label": "Human label", "oldValue": "...", "newValue": "...", "reason": "Why, in one sentence" } ]
-  }
-}`,
+    "Reply with one JSON object that follows the response schema. Leave out ideas and action unless the owner's request calls for them.",
     "",
     "Rules:",
     "- Every field in draftUpdates must have a matching entry in changes, so the owner sees exactly what you changed.",
-    "- productId / suggestedProductId must be an id from the products list, and only ACTIVE products. Never invent products or prices.",
+    "- productId / suggestedProductId must be an id from the products list. Never invent products or prices.",
     "- Only add a promotion if the owner asked for one or the product has a promoPrice. Don't promise discounts the owner didn't approve.",
     "- Dates are today or later (YYYY-MM-DD); times are 24-hour HH:MM Manila time. Prefer the recommended posting slot below.",
     "- Captions: one per selected platform, in the business's preferred language and brand tone, ending with the business's call to action. Facebook: warm and story-led. Instagram: short lines, a few hashtags. TikTok: a hook line plus a 3-step video plan for the owner.",
-    '- If the request intent is "captions", change only captions. If it is "schedule", change only scheduledDate and scheduledTime.',
+    '- If the request intent is "captions", change only captions.',
     "- Keh saves and schedules posts; it does not publish them yet. Never claim a post was published.",
     "",
     "Make it specific to THIS business — generic copy is the main thing to avoid:",
@@ -854,18 +977,12 @@ function createSystemPrompt(context: MarketingAssistantContext): string {
     "- Don't use filler phrases like: 'treat yourself', 'your next favorite', 'don't miss out', 'look no further', 'elevate', 'indulge', 'something special', 'made with love', 'the wait is over', 'you deserve it'.",
     "- Use local timing when it fits the date: payday (15th and 30th / 'sweldo'), ber months and Christmas, weekends, rainy season, summer.",
     "- The owner's instructions are a brief for you — follow them, don't paste them into the caption.",
-    "- Vary the structure and opening line from the recent captions listed in the context; never reuse their first lines.",
+    "- When recent captions are listed, vary the structure and opening line; never reuse their first lines.",
     "- Ideas must name a real product from the list and say why it fits now (a result, a promo price, a date, a season).",
     "- Only cite performance numbers that appear in the context. If performance is null, say there are no results yet.",
     "",
-    `Recommended posting slot: ${context.slot.label}${context.slot.fromResults ? " (from this business's results)" : " (default; no results yet)"}, around ${context.slot.time}.`,
-    `Business, brand, products, performance and recent captions:\n${JSON.stringify({
-      business: context.business,
-      brandProfile: context.brandProfile,
-      products: context.products,
-      performance: context.performance,
-      recentCaptions: context.recentCaptions ?? [],
-    })}`,
+    `Recommended posting slot: ${slot.label}${slot.fromResults ? " (from this business's results)" : " (default; no results yet)"}, around ${slot.time}.`,
+    `Business, brand, products, performance and recent captions:\n${JSON.stringify(context)}`,
   ].join("\n");
 }
 
@@ -993,25 +1110,60 @@ function sanitizeResponse(
   };
 }
 
+/** Chat questions about results; see usesModel. */
+const PERFORMANCE_QUESTION = /\b(analytics|performance|stats|insights)\b|\bhow (are|is) my\b/i;
+/** History sent to the model: the last few turns, trimmed. */
+const HISTORY_TURNS = 4;
+const HISTORY_CHARS = 800;
+
+/**
+ * Whether a request needs the language model. The best posting time is
+ * computed from the business's results (context.slot), and results
+ * questions may only cite numbers already in the context, so the guided
+ * engine answers both at no cost.
+ */
+export function usesModel(request: MarketingAssistantRequest): boolean {
+  if (!activeProvider()) return false;
+  const intent = request.actionIntent ?? "chat";
+  if (intent === "schedule") return false;
+  if (intent === "chat" && PERFORMANCE_QUESTION.test(request.question)) return false;
+  return true;
+}
+
 export async function generateMarketingAdvice(
   request: MarketingAssistantRequest,
-  context: MarketingAssistantContext
+  context: MarketingAssistantContext,
+  { allowModel = true }: { allowModel?: boolean } = {}
 ): Promise<MarketingAssistantResponse> {
   const guided = () => sanitizeResponse(createGuidedMarketingResponse(request, context), context);
+  if (!allowModel || !usesModel(request)) return guided();
 
-  const text = await generateJson(createSystemPrompt(context), [
-    ...request.history,
+  const intent = request.actionIntent ?? "chat";
+  const writesCaptions = intent === "fill" || intent === "captions";
+  const text = await generateJson(
+    createSystemPrompt(promptContext(request, context), context.slot),
+    [
+      ...request.history
+        .slice(-HISTORY_TURNS)
+        .map((turn) => ({ ...turn, content: clip(turn.content, HISTORY_CHARS) })),
+      {
+        role: "user",
+        content: [
+          request.question,
+          "",
+          `Request intent: ${intent}`,
+          `Current wizard step: ${request.currentStep ?? "not in the wizard"}`,
+          `Current draft: ${JSON.stringify(draftForPrompt(request))}`,
+        ].join("\n"),
+      },
+    ],
     {
-      role: "user",
-      content: [
-        request.question,
-        "",
-        `Request intent: ${request.actionIntent ?? "chat"}`,
-        `Current wizard step: ${request.currentStep ?? "not in the wizard"}`,
-        `Current draft: ${JSON.stringify(request.currentDraft ?? {})}`,
-      ].join("\n"),
-    },
-  ]);
+      label: `chat:${intent}`,
+      // Room for three captions (or a few ideas) plus low-level thinking.
+      maxOutputTokens: writesCaptions ? 2048 : 1536,
+      schema: { name: "keh_reply", schema: CHAT_REPLY_SCHEMA },
+    }
+  );
   if (!text) return guided();
 
   try {
