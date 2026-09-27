@@ -3,7 +3,10 @@
  *
  * Provides data-access functions for campaigns and posts.
  * Currently backed by mock data. Replace the implementations with
- * Supabase queries in Phase 5 — the function signatures will not change.
+ * Supabase queries — the function signatures will not change.
+ *
+ * Until then, every business sees the same sample campaigns (businessId is
+ * ignored) so the demo stays populated for real signed-in users.
  */
 
 import type { Campaign, SocialPost, EnrichedPost, EnrichedCampaign } from "@/types";
@@ -15,7 +18,8 @@ import { mockProducts } from "@/data/mock-products";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getCampaigns(businessId: string): Promise<Campaign[]> {
-  return mockCampaigns.filter((c) => c.businessId === businessId);
+  void businessId;
+  return mockCampaigns;
 }
 
 export async function getCampaignById(id: string): Promise<Campaign | null> {
@@ -43,14 +47,8 @@ export async function getEnrichedCampaign(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getPosts(businessId: string): Promise<EnrichedPost[]> {
-  // Filter by business via campaign ownership
-  const businessCampaignIds = mockCampaigns
-    .filter((c) => c.businessId === businessId)
-    .map((c) => c.id);
-
-  return mockEnrichedPosts.filter((p) =>
-    businessCampaignIds.includes(p.campaignId)
-  );
+  void businessId;
+  return mockEnrichedPosts;
 }
 
 export async function getPostById(id: string): Promise<SocialPost | null> {

@@ -1,21 +1,21 @@
 /**
  * Supabase server clients
  *
- * Used in Server Components, Server Actions, and API route handlers.
+ * Used in Server Components, Server Actions, and Route Handlers.
  * Reads/writes auth session cookies so the server knows who is logged in.
  *
  * Two clients are exported:
  *
- *   createServerClient()  — uses the public anon key.
+ *   createServerClient()  — uses the publishable key.
  *                           Respects Row Level Security (RLS).
  *                           Safe to call from any Server Component.
  *
- *   createAdminClient()   — uses the service-role key.
+ *   createAdminClient()   — uses the secret key.
  *                           BYPASSES RLS — only use for trusted server-side
  *                           operations (e.g. background jobs, webhooks).
- *                           NEVER expose the service-role key to the browser.
+ *                           NEVER expose the secret key to the browser.
  *
- * Usage (Server Component or API route):
+ * Usage (Server Component or Route Handler):
  *   import { createServerClient } from "@/lib/supabase/server";
  *   const supabase = await createServerClient();
  *   const { data: { user } } = await supabase.auth.getUser();
@@ -24,13 +24,15 @@
 import { createServerClient as _createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { publicEnv, getSupabaseSecretKey } from "@/lib/env";
+import type { Database } from "./database.types";
 
 export async function createServerClient() {
   const cookieStore = await cookies();
 
-  return _createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  return _createServerClient<Database>(
+    publicEnv.supabaseUrl,
+    publicEnv.supabasePublishableKey,
     {
       cookies: {
         getAll() {
@@ -44,7 +46,7 @@ export async function createServerClient() {
           } catch {
             // setAll is called from a Server Component — cookies can only be
             // written from a Server Action or Route Handler. Ignore here;
-            // the middleware will refresh the session.
+            // the proxy refreshes the session.
           }
         },
       },
@@ -54,18 +56,14 @@ export async function createServerClient() {
 
 /**
  * Admin client — bypasses RLS.
- * Only use in trusted server-side code (Server Actions, API routes, jobs).
+ * Only use in trusted server-side code (Server Actions, Route Handlers, jobs).
  * Never call from a Client Component.
  */
 export function createAdminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    }
-  );
+  return createClient<Database>(publicEnv.supabaseUrl, getSupabaseSecretKey(), {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 }

@@ -217,7 +217,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { id: "dashboard",      label: "Home",                     icon: "Home",          href: "/dashboard" },
   { id: "assistant",      label: "AI Marketing Assistant",   icon: "Sparkles",      href: "/assistant",       aiBadge: true },
-  { id: "campaigns",      label: "Campaigns",                icon: "Plus",          href: "/campaigns" },
+  { id: "campaigns",      label: "Campaigns",                icon: "Plus",          href: "/campaigns/new" },
   { id: "calendar",       label: "Calendar",                 icon: "Calendar",      href: "/calendar" },
   { id: "content",        label: "Content",                  icon: "FileText",      href: "/content" },
   { id: "products",       label: "Products & Services",      icon: "Package",       href: "/products" },
