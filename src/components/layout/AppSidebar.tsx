@@ -1,13 +1,15 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Home, Sparkles, Plus, Calendar, FileText, Package,
   BarChart2, Layers, Link as LinkIcon, CreditCard, Settings,
-  Coffee, ChevronDown, X,
+  Coffee, LogOut, X,
 } from "lucide-react";
 import { NAV_ITEMS, BOTTOM_NAV_ITEMS } from "@/constants";
+import { signOut } from "@/app/(auth)/actions";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string; size?: number }>> = {
   Home, Sparkles, Plus, Calendar, FileText, Package,
@@ -19,10 +21,25 @@ interface AppSidebarProps {
   onClose?: () => void;
   businessName: string;
   businessLocation: string;
+  userName: string;
+  userEmail: string;
+  userInitials: string;
 }
 
-export function AppSidebar({ isOpen, onClose, businessName, businessLocation }: AppSidebarProps) {
+export function AppSidebar({
+  isOpen, onClose, businessName, businessLocation, userName, userEmail, userInitials,
+}: AppSidebarProps) {
   const pathname = usePathname();
+
+  // Close the mobile drawer with Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose?.();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, onClose]);
 
   return (
     <>
@@ -56,6 +73,7 @@ export function AppSidebar({ isOpen, onClose, businessName, businessLocation }: 
         {/* Brand */}
         <Link
           href="/dashboard"
+          onClick={onClose}
           className="flex items-center gap-2 px-5 pt-5 pb-4 text-[22px] font-[800] tracking-[-0.04em] font-heading text-[#262535]"
           style={{ fontFamily: "var(--font-manrope), sans-serif" }}
         >
@@ -85,6 +103,7 @@ export function AppSidebar({ isOpen, onClose, businessName, businessLocation }: 
         <div className="px-3 mb-4">
           <Link
             href="/campaigns/new"
+            onClick={onClose}
             className="flex items-center justify-center gap-2 w-full py-[10px] px-4 rounded-[8px] bg-[#5849da] text-white text-[14px] font-[600] hover:bg-[#4a3cc7] transition-colors"
           >
             <Plus size={16} />
@@ -108,6 +127,7 @@ export function AppSidebar({ isOpen, onClose, businessName, businessLocation }: 
               <Link
                 key={item.id}
                 href={item.href}
+                onClick={onClose}
                 className={[
                   "flex items-center gap-3 px-3 py-[9px] rounded-[8px] text-[14px] font-[500] mb-[2px] transition-colors",
                   isActive
@@ -141,6 +161,7 @@ export function AppSidebar({ isOpen, onClose, businessName, businessLocation }: 
               <Link
                 key={item.id}
                 href={item.href}
+                onClick={onClose}
                 className={[
                   "flex items-center gap-3 px-3 py-[9px] rounded-[8px] text-[14px] font-[500] mb-[2px] transition-colors",
                   isActive
@@ -161,23 +182,29 @@ export function AppSidebar({ isOpen, onClose, businessName, businessLocation }: 
         </div>
 
         {/* User row */}
-        <Link
-          href="/settings"
-          className="flex items-center gap-3 mx-2 my-2 px-3 py-[10px] rounded-[10px] hover:bg-[#f7f8fb] transition-colors"
-        >
+        <div className="flex items-center gap-3 mx-2 my-2 px-3 py-[10px] rounded-[10px]">
           <span className="w-8 h-8 rounded-full bg-[#f0edff] text-[#5849da] flex items-center justify-center text-[11px] font-[700] shrink-0">
-            JD
+            {userInitials}
           </span>
           <div className="flex-1 min-w-0">
             <p className="text-[13px] font-[600] text-[#262535] leading-tight truncate">
-              Juan Dela Cruz
+              {userName}
             </p>
-            <p className="text-[11px] text-[#7b7b8b] leading-tight">
-              Business owner
+            <p className="text-[11px] text-[#7b7b8b] leading-tight truncate">
+              {userEmail}
             </p>
           </div>
-          <ChevronDown size={14} className="text-[#7b7b8b] shrink-0" />
-        </Link>
+          <form action={signOut}>
+            <button
+              type="submit"
+              className="p-1.5 rounded-lg text-[#7b7b8b] hover:bg-[#f7f8fb] hover:text-[#262535] transition-colors"
+              aria-label="Log out"
+              title="Log out"
+            >
+              <LogOut size={15} />
+            </button>
+          </form>
+        </div>
       </aside>
     </>
   );

@@ -73,7 +73,7 @@ export type DbRecommendationSource =
 // Row types (what SELECT returns)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface ProfileRow {
+export type ProfileRow = {
   id: string;
   full_name: string;
   avatar_url: string | null;
@@ -81,7 +81,7 @@ export interface ProfileRow {
   updated_at: string;
 }
 
-export interface BusinessRow {
+export type BusinessRow = {
   id: string;
   owner_id: string;
   name: string;
@@ -101,7 +101,7 @@ export interface BusinessRow {
   updated_at: string;
 }
 
-export interface BrandProfileRow {
+export type BrandProfileRow = {
   id: string;
   business_id: string;
   tone: DbTone;
@@ -115,7 +115,7 @@ export interface BrandProfileRow {
   updated_at: string;
 }
 
-export interface SubscriptionRow {
+export type SubscriptionRow = {
   id: string;
   business_id: string;
   plan: DbSubscriptionPlan;
@@ -133,7 +133,7 @@ export interface SubscriptionRow {
   updated_at: string;
 }
 
-export interface ProductRow {
+export type ProductRow = {
   id: string;
   business_id: string;
   name: string;
@@ -150,7 +150,7 @@ export interface ProductRow {
   updated_at: string;
 }
 
-export interface SocialAccountRow {
+export type SocialAccountRow = {
   id: string;
   business_id: string;
   platform: DbPlatform;
@@ -166,7 +166,7 @@ export interface SocialAccountRow {
   updated_at: string;
 }
 
-export interface CampaignRow {
+export type CampaignRow = {
   id: string;
   business_id: string;
   product_id: string;
@@ -179,7 +179,7 @@ export interface CampaignRow {
   updated_at: string;
 }
 
-export interface SocialPostRow {
+export type SocialPostRow = {
   id: string;
   campaign_id: string;
   product_id: string;
@@ -195,7 +195,7 @@ export interface SocialPostRow {
   updated_at: string;
 }
 
-export interface PostMetricRow {
+export type PostMetricRow = {
   id: string;
   post_id: string;
   reach: number;
@@ -210,7 +210,7 @@ export interface PostMetricRow {
   collected_at: string;
 }
 
-export interface AiRecommendationRow {
+export type AiRecommendationRow = {
   id: string;
   business_id: string;
   type: DbRecommendationType;
@@ -252,58 +252,68 @@ export type UpdateSocialPost = Partial<InsertSocialPost>;
 // (matches the structure expected by @supabase/supabase-js)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface Database {
+export type Database = {
   public: {
     Tables: {
       profiles: {
         Row: ProfileRow;
         Insert: Omit<ProfileRow, "created_at" | "updated_at">;
         Update: Partial<Omit<ProfileRow, "id" | "created_at" | "updated_at">>;
+        Relationships: [];
       };
       businesses: {
         Row: BusinessRow;
         Insert: InsertBusiness & { id?: string };
         Update: UpdateBusiness;
+        Relationships: [];
       };
       brand_profiles: {
         Row: BrandProfileRow;
         Insert: InsertBrandProfile & { id?: string };
         Update: UpdateBrandProfile;
+        Relationships: [];
       };
       subscriptions: {
         Row: SubscriptionRow;
         Insert: Omit<SubscriptionRow, "id" | "created_at" | "updated_at"> & { id?: string };
         Update: Partial<Omit<SubscriptionRow, "id" | "created_at" | "updated_at">>;
+        Relationships: [];
       };
       products: {
         Row: ProductRow;
         Insert: InsertProduct & { id?: string };
         Update: UpdateProduct;
+        Relationships: [];
       };
       social_accounts: {
         Row: SocialAccountRow;
         Insert: InsertSocialAccount & { id?: string };
         Update: Partial<InsertSocialAccount>;
+        Relationships: [];
       };
       campaigns: {
         Row: CampaignRow;
         Insert: InsertCampaign & { id?: string };
         Update: UpdateCampaign;
+        Relationships: [];
       };
       social_posts: {
         Row: SocialPostRow;
         Insert: InsertSocialPost & { id?: string };
         Update: UpdateSocialPost;
+        Relationships: [];
       };
       post_metrics: {
         Row: PostMetricRow;
         Insert: InsertPostMetric & { id?: string };
-        Update: never; // metrics are immutable
+        Update: Record<string, never>; // metrics are immutable
+        Relationships: [];
       };
       ai_recommendations: {
         Row: AiRecommendationRow;
         Insert: InsertAiRecommendation & { id?: string };
         Update: { dismissed_at?: string | null };
+        Relationships: [];
       };
     };
     Enums: {
@@ -318,5 +328,13 @@ export interface Database {
       recommendation_type: DbRecommendationType;
       recommendation_source: DbRecommendationSource;
     };
+    Views: Record<never, never>;
+    Functions: {
+      get_user_business_ids: {
+        Args: Record<string, never>;
+        Returns: string[];
+      };
+    };
+    CompositeTypes: Record<never, never>;
   };
 }

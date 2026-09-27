@@ -1,20 +1,32 @@
-import { PageHeader } from "@/components/ui/page-header";
 import { CampaignWizard } from "@/components/campaigns/CampaignWizard";
+import { getCurrentContext } from "@/lib/auth/context";
+import { getBrandProfile } from "@/services/business.service";
 import { getProducts } from "@/services/product.service";
+import { DEFAULT_CTA_LABELS, LANGUAGE_LABELS, TONE_LABELS } from "@/constants";
 
-// Demo business ID — will come from Supabase session in Phase 5
-const DEMO_BUSINESS_ID = "biz_001";
-
-export default async function NewCampaignPage() {
-  const products = await getProducts(DEMO_BUSINESS_ID);
+export default async function NewCampaignPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ product?: string }>;
+}) {
+  const { business } = await getCurrentContext();
+  const [products, brand, { product }] = await Promise.all([
+    getProducts(business.id),
+    getBrandProfile(business.id),
+    searchParams,
+  ]);
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Create campaign"
-        subtitle="Tell us what you want to achieve. We'll handle the social media strategy."
-      />
-      <CampaignWizard products={products} />
-    </div>
+    <CampaignWizard
+      products={products.filter((p) => p.availability === "ACTIVE")}
+      initialProductId={product}
+      business={{
+        name: business.name,
+        location: business.location,
+        toneLabel: TONE_LABELS[brand?.tone ?? "FRIENDLY"],
+        languageLabel: LANGUAGE_LABELS[brand?.preferredLanguage ?? business.preferredLanguage],
+        ctaLabel: DEFAULT_CTA_LABELS[brand?.defaultCTA ?? "MESSAGE_US"],
+      }}
+    />
   );
 }

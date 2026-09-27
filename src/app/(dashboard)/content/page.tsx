@@ -1,10 +1,11 @@
+import { getCurrentContext } from "@/lib/auth/context";
 import { getPosts } from "@/services/campaign.service";
-import { ContentLibrary } from "@/components/content/ContentLibrary";
-
-// Demo business ID — will come from Supabase session in Phase 5
-const DEMO_BUSINESS_ID = "biz_001";
+import { ContentView } from "./ContentView";
 
 export default async function ContentPage() {
-  const posts = await getPosts(DEMO_BUSINESS_ID);
-  return <ContentLibrary posts={posts} />;
+  const { business } = await getCurrentContext();
+  const posts = await getPosts(business.id);
+
+  // Newest first in the library.
+  return <ContentView posts={[...posts].reverse()} />;
 }

@@ -1,16 +1,22 @@
-import { getAnalyticsSummary, getWeeklyReach, getInsights, getPlatformReachRatio } from "@/services/analytics.service";
+import {
+  getAnalyticsSummary,
+  getAnalyticsFindings,
+  getWeeklyReach,
+  getInsights,
+  getPlatformReachRatio,
+} from "@/services/analytics.service";
 import { getPosts } from "@/services/campaign.service";
+import { getCurrentContext } from "@/lib/auth/context";
 import { AnalyticsView } from "@/components/analytics/AnalyticsView";
 
-// Demo business ID — will come from Supabase session in Phase 5
-const DEMO_BUSINESS_ID = "biz_001";
-
 export default async function AnalyticsPage() {
-  const [summary, weeklyReach, insights, posts] = await Promise.all([
-    getAnalyticsSummary(DEMO_BUSINESS_ID),
-    getWeeklyReach(DEMO_BUSINESS_ID),
-    getInsights(DEMO_BUSINESS_ID),
-    getPosts(DEMO_BUSINESS_ID),
+  const { business } = await getCurrentContext();
+  const [summary, findings, weeklyReach, insights, posts] = await Promise.all([
+    getAnalyticsSummary(business.id),
+    getAnalyticsFindings(business.id),
+    getWeeklyReach(business.id),
+    getInsights(business.id),
+    getPosts(business.id),
   ]);
 
   const platformReachRatio = {
@@ -22,6 +28,7 @@ export default async function AnalyticsPage() {
   return (
     <AnalyticsView
       summary={summary}
+      findings={findings}
       weeklyReach={weeklyReach}
       insights={insights}
       posts={posts}

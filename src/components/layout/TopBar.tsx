@@ -23,9 +23,10 @@ function getPageTitle(pathname: string): string {
 
 interface TopBarProps {
   onMenuClick: () => void;
+  userInitials: string;
 }
 
-export function TopBar({ onMenuClick }: TopBarProps) {
+export function TopBar({ onMenuClick, userInitials }: TopBarProps) {
   const pathname = usePathname();
   const pageTitle = getPageTitle(pathname);
 
@@ -47,11 +48,8 @@ export function TopBar({ onMenuClick }: TopBarProps) {
 
       {/* Right: demo badge + tagline + bell + avatar */}
       <div className="flex items-center gap-3">
-        <span className="hidden sm:inline-flex items-center px-2.5 py-1 rounded-md bg-[#f0edff] text-[#5849da] text-[12px] font-[600]">
-          Interactive demo
-        </span>
         <span className="hidden md:block text-[13px] text-[#7b7b8b]">
-          Your business, in good hands.
+          handle your marketing here, Keh!
         </span>
         <div className="w-px h-4 bg-[#e9e9ef] hidden sm:block" />
         <button
@@ -61,7 +59,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
           <Bell size={18} />
         </button>
         <span className="w-[30px] h-[30px] rounded-full bg-[#f0edff] text-[#5849da] text-[11px] font-[700] flex items-center justify-center">
-          JD
+          {userInitials}
         </span>
       </div>
     </header>

@@ -9,6 +9,7 @@ import {
   Package, ShoppingCart, MapPin, Megaphone, Sparkles, Tag, Heart,
 } from "lucide-react";
 import type { CampaignGoal } from "@/types";
+import { formatPrice } from "@/utils";
 
 const GOAL_ICONS: Record<CampaignGoal, React.ComponentType<{ size?: number; className?: string }>> = {
   PROMOTE_PRODUCT: Package,
@@ -21,7 +22,7 @@ const GOAL_ICONS: Record<CampaignGoal, React.ComponentType<{ size?: number; clas
 };
 
 export function GoalStep() {
-  const { draft, products, setDraft, nextStep } = useCampaign();
+  const { draft, setDraft, nextStep, products, business, product } = useCampaign();
 
   return (
     <div className="space-y-6">
@@ -63,12 +64,21 @@ export function GoalStep() {
           <h3 className="font-heading font-[700] text-[16px] text-[#262535]">
             What&apos;s in the spotlight?
           </h3>
-          <button className="text-[13px] text-[#5849da] font-[600] flex items-center gap-1 hover:underline">
+          <Link href="/products" className="text-[13px] text-[#5849da] font-[600] flex items-center gap-1 hover:underline">
             <Plus size={13} />
             Add new product
-          </button>
+          </Link>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {products.length === 0 && (
+            <Link
+              href="/products"
+              className="col-span-full px-4 py-6 rounded-[10px] border-2 border-dashed border-[#e9e9ef] text-center text-[14px] text-[#7b7b8b] hover:border-[#c5bdf5]"
+            >
+              You haven&apos;t added any products yet.{" "}
+              <span className="text-[#5849da] font-[600]">Add your first product →</span>
+            </Link>
+          )}
           {products.map((p) => {
             const isSelected = draft.productId === p.id;
             return (
@@ -82,14 +92,16 @@ export function GoalStep() {
                     : "border-[#e9e9ef] bg-white hover:border-[#c5bdf5]",
                 ].join(" ")}
               >
-                <div className="relative w-10 h-10 rounded-[6px] overflow-hidden shrink-0">
-                  <Image src={p.imageUrl} alt={p.name} fill className="object-cover" sizes="40px" unoptimized />
+                <div className="relative w-10 h-10 rounded-[6px] overflow-hidden shrink-0 bg-[#f7f8fb]">
+                  {p.imageUrl && (
+                    <Image src={p.imageUrl} alt="" fill className="object-cover" sizes="40px" unoptimized />
+                  )}
                 </div>
                 <div>
                   <p className={["text-[14px] font-[600]", isSelected ? "text-[#5849da]" : "text-[#262535]"].join(" ")}>
                     {p.name}
                   </p>
-                  <p className="text-[12px] text-[#7b7b8b]">₱{p.price}</p>
+                  <p className="text-[12px] text-[#7b7b8b]">{formatPrice(p.price)}</p>
                 </div>
               </button>
             );
@@ -129,7 +141,7 @@ export function GoalStep() {
       {/* Context hint */}
       <div className="bg-[#f0edff] text-[#5849da] rounded-lg px-4 py-3 text-[13px] flex items-center gap-2">
         <Sparkles size={13} />
-        Already in the loop: Juan&apos;s Café, Cebu City · Friendly tone · Taglish
+        Already in the loop: {business.name}{business.location && `, ${business.location}`} · {business.toneLabel} tone · {business.languageLabel}
       </div>
 
       {/* Footer */}
@@ -139,7 +151,8 @@ export function GoalStep() {
         </Link>
         <button
           onClick={nextStep}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-[8px] bg-[#5849da] text-white text-[14px] font-[600] hover:bg-[#4a3cc7] transition-colors"
+          disabled={!draft.goal || !product}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-[8px] bg-[#5849da] text-white text-[14px] font-[600] hover:bg-[#4a3cc7] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           <Sparkles size={15} />
           Generate campaign
