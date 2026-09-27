@@ -27,7 +27,7 @@ There is no test suite and no CI yet. Verify changes with `npm run build` + `npm
 - **Tailwind CSS v4** (CSS-first config in `src/app/globals.css`, no tailwind.config) + **shadcn/ui** (`base-nova` style, built on `@base-ui/react`, not Radix; `cn` comes from shadcn's `cn` package). Add primitives with `npx shadcn add <name>`.
 - **Zod 4**, **Recharts 3**, **lucide-react**.
 - **Supabase** (`@supabase/ssr`, `@supabase/supabase-js`) — Auth, Postgres (RLS) and Storage. `@supabase/server` is installed but unused.
-- **OpenAI** — planned, not installed. Wizard captions are template strings in `CampaignContext.tsx` until then.
+- **OpenAI** — optional, called with `fetch` (no SDK) from `lib/ai/ai.service.ts` when `OPENAI_API_KEY` is set (`OPENAI_MODEL`, default `gpt-4o-mini`). Without a key the assistant runs a rules-based **guided** mode.
 
 ## Architecture
 
@@ -44,13 +44,16 @@ src/
 │   ├── products/      # server page → ProductsView + ProductDialog + actions.ts (saveProduct)
 │   ├── brand/         # server page → components/brand/BrandForm + actions.ts (saveBrandProfile)
 │   ├── analytics/     # server page → components/analytics/AnalyticsView (real posts + metrics)
-│   └── assistant, social-accounts, subscription, settings  # server pages, mostly mock data
+│   ├── assistant/     # server page → components/assistant/AssistantView (AI marketing manager chat)
+│   └── social-accounts, subscription, settings  # server pages, mostly mock data
+├── app/api/assistant/ # POST route → generateMarketingAdvice (auth checked in the route; proxy lets it through)
 ├── app/page.tsx       # redirects to /dashboard
 ├── components/
 │   ├── auth/          # AuthForm (shared login/signup form)
 │   ├── layout/        # AppSidebar, TopBar, DashboardLayout
 │   ├── ui/            # shadcn Button + Keh primitives (StatCard, PageHeader, badges, AvailabilityBadge…)
-│   └── campaigns/     # CampaignWizard + CampaignContext + 5 steps: Goal → Content → Platforms → Review → Publish
+│   ├── assistant/     # MarketingManagerCopilot (floating copilot on every page)
+│   └── campaigns/     # CampaignWizard + CampaignContext + 5 steps + WizardAiCopilot + AiChangesBanner
 ├── services/          # data access — business, product, campaign (+ post_metrics), storage = Supabase; recommendation, social-account, analytics.getAudienceLearnings = mock
 ├── data/              # typed mock data (still used by the mock services and mock pages)
 ├── lib/
@@ -58,18 +61,19 @@ src/
 │   ├── analytics.ts   # pure stats: periodSummary, weeklyReach, findings, insights, recommendNextMove
 │   ├── auth/context.ts# getCurrentContext() → { user, business }; redirects to /login if signed out
 │   ├── supabase/      # client.ts (browser), server.ts (server + admin), database.types.ts (hand-written)
-│   ├── ai/            # ai.service.ts — empty stub
+│   ├── ai/            # ai.service.ts — marketing manager: OpenAI or guided engine, sanitizeResponse
 │   ├── social/        # SocialPublisher interface — stub
 │   └── validation/    # Zod schemas (ProductFormSchema, CampaignDraftSchema are used by actions)
+├── hooks/             # useMarketingAssistant (chat state + /api/assistant) and AI hand-off helpers
 ├── types/index.ts     # domain model (single source of truth for TS types)
 ├── constants/         # platforms, statuses, goals, nav, plans, DEFAULT_TIMEZONE, MAX_UPLOAD_BYTES
 └── utils/             # index.ts (formatPrice, initials…) + datetime.ts (Manila-time helpers)
-supabase/migrations/   # 001–005 base schema, 007_hardening, 008_product_images (Storage bucket)
+supabase/migrations/   # 001–005 base schema, 007_hardening, 008_product_images (Storage bucket), 009_ai_rate_limit
 supabase/seed.sql      # dev seed — NOT a migration; needs a matching auth user first
 scripts/seed-demo-data.mjs  # `npm run seed:demo -- --email <owner>`: 8 weeks of published demo posts + metrics (--reset removes them, --list lists businesses)
 ```
 
-There is no `app/api/`, no `src/hooks/`, and no `error.tsx` / `loading.tsx` / `not-found.tsx` yet.
+There is no `error.tsx` / `loading.tsx` / `not-found.tsx` yet.
 
 **Auth flow:** `proxy.ts` refreshes the session and optimistically redirects signed-out users to `/login` (and signed-in users away from `/login`/`/signup`). The authoritative check is `getCurrentContext()`, called by the `(dashboard)` layout, every server page, and every Server Action. Never hard-code a business ID.
 
@@ -84,6 +88,16 @@ There is no `app/api/`, no `src/hooks/`, and no `error.tsx` / `loading.tsx` / `n
 - **Dates/times:** use `@/utils/datetime` (`manilaDateKey`, `manilaTime`, `manilaWeekdayHour`, `todayKey`, `manilaToUtcIso`, `formatDateKey`…). The DB stores UTC `timestamptz`; the UI shows `Asia/Manila`. Never slice ISO strings.
 - **Images:** upload through `storage.service.ts` (`submittedFile`, `validateImage`, `uploadBusinessImage`) — files go to the `product-images` bucket under `<business_id>/…` (brand images under `<business_id>/brand/…`). Photos are optional (`imageUrl` may be `""`), so guard every `<Image>`.
 
+### AI marketing manager
+
+- One conversation hook, `useMarketingAssistant`, powers the assistant page, the floating copilot and the in-wizard copilot. All three call `POST /api/assistant`.
+- The route builds the context (business, brand, active products, and the business's results from `lib/analytics` incl. `recommendedSlot`) and calls `generateMarketingAdvice`. Responses can carry `ideas` and an `action` that fills wizard fields plus a `changes` list explaining every field changed.
+- **Every response goes through `sanitizeResponse`** (model or guided): only real ACTIVE product IDs, dates ≥ today, valid HH:MM times, bounded text, markdown stripped, and a change entry for every changed field. Keep it that way — the wizard trusts sanitized actions.
+- Intent scoping: `captions` may only change captions; `schedule` only date/time.
+- Hand-off to the wizard: `stashPendingAiCampaign` (sessionStorage, read by `CampaignContext` *after mount*) or `dispatchAiCampaign` (window event while the wizard is open). The owner can review the change log and undo (`AiChangesBanner`).
+- **Rate limiting:** `/api/assistant` calls the `consume_ai_request()` RPC (migration 009) before any AI work — 8 requests/minute and 100/day per user (`AI_LIMITS` in the route), 429 + `Retry-After` when exceeded. It fails open (logs an error) if the migration isn't applied.
+- Not yet done: AI usage isn't counted against `subscriptions.ai_campaigns_used` (the plan's "AI campaigns" number).
+
 ### Rules
 
 - **Data flow is UI → service → data.** Don't add new `@/data/*` imports to UI code. Remaining direct imports: the analytics, assistant, brand, social-accounts and subscription pages (still mock).
@@ -91,7 +105,7 @@ There is no `app/api/`, no `src/hooks/`, and no `error.tsx` / `loading.tsx` / `n
 - **Social platforms go through `SocialPublisher`** (`lib/social/publisher.interface.ts`). Nothing publishes to real platforms yet: "Schedule" and "Publish now" save posts as `SCHEDULED` (TikTok as `ACTION_REQUIRED`, since the owner finishes it manually); "Save draft" saves `DRAFT`.
 - **Supabase clients:** `createBrowserClient()` in client code; `createServerClient()` in server code (respects RLS); `createAdminClient()` bypasses RLS — trusted server code only.
 - **RLS ownership chain:** `auth.uid() → profiles.id → businesses.owner_id → <table>.business_id`, via `get_user_business_ids()`. Every new table needs RLS enabled plus policies following this chain. Storage paths for product photos are `<business_id>/<uuid>.<ext>`.
-- **Migrations:** 001–005, 007 and 008 are applied to the project in `.env`. Once a migration is applied, fix schema/RLS with a new numbered migration, not by editing it. `social_accounts` token columns aren't selectable by users — select explicit columns, not `*`.
+- **Migrations:** 001–005, 007 and 008 are applied to the project in `.env`; 009 (AI rate limit) must be applied with the AI assistant branch. Once a migration is applied, fix schema/RLS with a new numbered migration, not by editing it. `social_accounts` token columns aren't selectable by users — select explicit columns, not `*`.
 
 ### Domain model
 

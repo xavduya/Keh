@@ -19,7 +19,7 @@ const FRIDAY = 5;
 const RECOMMENDED_TIME = "18:00";
 
 export function PublishStep() {
-  const { draft, setDraft, prevStep } = useCampaign();
+  const { draft, setDraft, prevStep, aiUpdatedFields } = useCampaign();
   const [pending, startTransition] = useTransition();
   const [pendingIntent, setPendingIntent] = useState<SaveIntent | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +39,9 @@ export function PublishStep() {
     setDraft({ scheduledDate: nextWeekday(todayKey(), FRIDAY), scheduledTime: RECOMMENDED_TIME });
   }
 
+  const isAiDate = aiUpdatedFields.includes("scheduledDate");
+  const isAiTime = aiUpdatedFields.includes("scheduledTime");
+
   return (
     <div className="space-y-5">
       <div>
@@ -51,22 +54,44 @@ export function PublishStep() {
       {/* Date + time */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-[600] text-[#262535]">Date</span>
+          <span className="text-[13px] font-[600] text-[#262535] flex items-center justify-between">
+            <span>Date</span>
+            {isAiDate && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-[700] text-[#5849da]">
+                <Sparkles size={11} /> AI Optimal Date
+              </span>
+            )}
+          </span>
           <input
             type="date"
             value={draft.scheduledDate}
             min={todayKey()}
             onChange={(e) => setDraft({ scheduledDate: e.target.value })}
-            className="px-3 py-2 border border-[#e9e9ef] rounded-[8px] text-[14px] bg-white focus:outline-none focus:border-[#5849da] transition-colors"
+            className={`px-3 py-2 border rounded-[8px] text-[14px] focus:outline-none focus:border-[#5849da] transition-colors ${
+              isAiDate
+                ? "border-[#a499ed] bg-[#fcfbfe] ring-1 ring-[#5849da]/20"
+                : "border-[#e9e9ef] bg-white"
+            }`}
           />
         </label>
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-[600] text-[#262535]">Time · Asia/Manila</span>
+          <span className="text-[13px] font-[600] text-[#262535] flex items-center justify-between">
+            <span>Time · Asia/Manila</span>
+            {isAiTime && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-[700] text-[#5849da]">
+                <Sparkles size={11} /> AI Optimal Time
+              </span>
+            )}
+          </span>
           <input
             type="time"
             value={draft.scheduledTime}
             onChange={(e) => setDraft({ scheduledTime: e.target.value })}
-            className="px-3 py-2 border border-[#e9e9ef] rounded-[8px] text-[14px] bg-white focus:outline-none focus:border-[#5849da] transition-colors"
+            className={`px-3 py-2 border rounded-[8px] text-[14px] focus:outline-none focus:border-[#5849da] transition-colors ${
+              isAiTime
+                ? "border-[#a499ed] bg-[#fcfbfe] ring-1 ring-[#5849da]/20"
+                : "border-[#e9e9ef] bg-white"
+            }`}
           />
         </label>
       </div>

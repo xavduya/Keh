@@ -310,3 +310,37 @@ export function recommendNextMove(f: Findings, products: Product[]): Recommendat
           : `No product clearly outperforms the others yet, so Keh suggests ${next.name}, which has appeared in the fewest campaigns.`,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Posting slot — turns the best window into a concrete day + time
+// ─────────────────────────────────────────────────────────────────────────────
+
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const TIME_OF_DAY_START: Record<string, string> = {
+  morning: "09:00",
+  midday: "12:00",
+  afternoon: "15:00",
+  evening: "18:00",
+  night: "20:00",
+};
+
+export interface PostingSlot {
+  /** 0 = Sunday … 6 = Saturday (Manila) */
+  weekday: number;
+  /** "HH:MM" (Manila) */
+  time: string;
+  /** e.g. "Friday evening" */
+  label: string;
+  /** true when based on the business's own results, false for the default */
+  fromResults: boolean;
+}
+
+/** Best time to post: the business's best window, else Friday 6 PM. */
+export function recommendedSlot(f: Findings): PostingSlot {
+  const [day, part] = f.bestWindow?.value.split(" ") ?? [];
+  const weekday = WEEKDAYS.indexOf(day);
+  if (weekday >= 0 && part && TIME_OF_DAY_START[part]) {
+    return { weekday, time: TIME_OF_DAY_START[part], label: f.bestWindow!.value, fromResults: true };
+  }
+  return { weekday: 5, time: "18:00", label: "Friday evening", fromResults: false };
+}

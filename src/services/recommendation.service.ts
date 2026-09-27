@@ -12,8 +12,9 @@ import { mockRecommendations } from "@/data/mock-recommendations";
 export async function getRecommendations(
   businessId: string
 ): Promise<AIRecommendation[]> {
-  void businessId;
-  return mockRecommendations;
+  return mockRecommendations.filter(
+    (recommendation) => recommendation.businessId === businessId
+  );
 }
 
 export async function getTopRecommendation(

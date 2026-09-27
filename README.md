@@ -32,6 +32,13 @@ Copy `.env.example` to `.env.local` and fill in the values:
 cp .env.example .env.local
 ```
 
+Set `OPENAI_API_KEY` in `.env.local` to enable model-powered Keh marketing
+conversations. The key is used only on the server. Without it, the assistant
+uses a clearly labeled guided mode based on the signed-in business profile,
+product catalog and the business's own post results. Real platform metrics
+aren't collected yet; `npm run seed:demo -- --email <owner>` fills in demo
+history for testing.
+
 Never commit `.env.local` or any file containing real credentials.
 
 ## Project structure
@@ -59,7 +66,7 @@ src/
 | 3b | Upcoming | Feature components — campaign wizard, calendar, products |
 | 4 | Planned | Data layer abstraction — service/repository boundary |
 | 5 | Planned | Supabase — database, auth, RLS, storage |
-| 6 | Planned | AI layer — OpenAI integration via server-side service |
+| 6 | 🚧 In progress | Server-side Keh marketing manager with OpenAI conversations and a guided fallback |
 | 7 | Planned | Social integrations — Facebook, Instagram adapters |
 | 8 | Planned | Metrics & learning — analytics pipeline, AI recommendations |
 

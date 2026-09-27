@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { useCampaign } from "./CampaignContext";
 import { SocialPlatformBadge } from "@/components/ui/social-platform-badge";
 import { PostStatusBadge } from "@/components/ui/post-status-badge";
@@ -15,7 +15,7 @@ const PLATFORM_LABELS: Record<Platform, string> = {
 };
 
 export function PlatformStep() {
-  const { draft, setDraft, nextStep, prevStep } = useCampaign();
+  const { draft, setDraft, nextStep, prevStep, aiUpdatedFields } = useCampaign();
 
   function togglePlatform(p: Platform, checked: boolean) {
     const next = checked
@@ -42,10 +42,15 @@ export function PlatformStep() {
         {PLATFORMS.map((p) => {
           const isChecked = draft.platforms.includes(p);
           const isTikTok = p === "TIKTOK";
+          const isAiPicked = isChecked && aiUpdatedFields.includes("platforms");
           return (
             <label
               key={p}
-              className="flex items-center gap-4 p-4 rounded-[10px] border border-[#e9e9ef] cursor-pointer hover:bg-[#fafafa] transition-colors"
+              className={`flex items-center gap-4 p-4 rounded-[10px] border cursor-pointer hover:bg-[#fafafa] transition-colors ${
+                isAiPicked
+                  ? "border-[#d8d2fb] bg-[#faf9ff]"
+                  : "border-[#e9e9ef]"
+              }`}
             >
               <input
                 type="checkbox"
@@ -55,9 +60,16 @@ export function PlatformStep() {
               />
               <SocialPlatformBadge platform={p} size="md" />
               <div className="flex-1">
-                <p className="text-[14px] font-[600] text-[#262535]">
-                  {PLATFORM_LABELS[p]}
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="text-[14px] font-[600] text-[#262535]">
+                    {PLATFORM_LABELS[p]}
+                  </p>
+                  {isAiPicked && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[#5849da] px-1.5 py-0.5 text-[9px] font-[700] text-white">
+                      <Sparkles size={9} /> AI Picked
+                    </span>
+                  )}
+                </div>
                 <p className="text-[13px] text-[#7b7b8b]">
                   {isTikTok ? "Manual action required" : "Automatic publishing"}
                 </p>

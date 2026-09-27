@@ -8,6 +8,8 @@ import { ContentStep } from "./ContentStep";
 import { PlatformStep } from "./PlatformStep";
 import { ReviewStep } from "./ReviewStep";
 import { PublishStep } from "./PublishStep";
+import { AiChangesBanner } from "./AiChangesBanner";
+import { WizardAiCopilot } from "./WizardAiCopilot";
 import type { CampaignGoal, Product } from "@/types";
 
 function WizardBody() {
@@ -19,6 +21,12 @@ function WizardBody() {
         title="Create campaign"
         subtitle="Tell us what you want to achieve. We'll handle the social media strategy."
       />
+
+      {/* AI change audit notification banner */}
+      <AiChangesBanner />
+
+      {/* Embedded in-wizard AI Marketing Manager */}
+      <WizardAiCopilot />
 
       <WizardStepper />
 

@@ -19,6 +19,7 @@ import { publicEnv } from "@/lib/env";
 
 const AUTH_PAGES = ["/login", "/signup"];
 const PUBLIC_PREFIXES = ["/auth/"]; // e.g. /auth/callback
+const API_ROUTES_WITH_OWN_AUTH = ["/api/assistant"];
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -55,8 +56,9 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isAuthPage = AUTH_PAGES.includes(pathname);
   const isPublic = PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
+  const handlesApiAuth = API_ROUTES_WITH_OWN_AUTH.includes(pathname);
 
-  if (!user && !isAuthPage && !isPublic) {
+  if (!user && !isAuthPage && !isPublic && !handlesApiAuth) {
     return redirectWithCookies(request, "/login", supabaseResponse);
   }
   if (user && isAuthPage) {
