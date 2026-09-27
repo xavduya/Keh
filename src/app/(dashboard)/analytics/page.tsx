@@ -17,6 +17,7 @@ import { FilterTabs } from "@/components/ui/filter-tabs";
 import { SocialPlatformBadge } from "@/components/ui/social-platform-badge";
 import {
   mockAnalyticsSummary,
+  mockAnalyticsFindings,
   mockWeeklyReach,
   mockInsights,
   PLATFORM_REACH_RATIO,
@@ -55,9 +56,17 @@ export default function AnalyticsPage() {
         title="A clearer picture of what works"
         subtitle="Simple insights. Better decisions. More time for your business."
         action={
-          <span className="text-[13px] text-[#7b7b8b]">
-            September 2026 · Sample data
-          </span>
+          <div className="flex items-center gap-2 rounded-[8px] border border-[#e9e9ef] bg-white px-3 py-2">
+            <Sparkles size={15} className="shrink-0 text-[#5849da]" />
+            <div>
+              <p className="text-[11px] font-[600] leading-tight text-[#7b7b8b]">
+                Top result this month
+              </p>
+              <p className="text-[13px] font-[700] leading-tight text-[#262535]">
+                {mockAnalyticsFindings.bestProduct} · {mockAnalyticsFindings.bestPostingWindow}
+              </p>
+            </div>
+          </div>
         }
       />
 
