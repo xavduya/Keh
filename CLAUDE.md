@@ -36,24 +36,26 @@ src/
 ├── app/(auth)/        # login, signup + actions.ts (login / signup / signOut)
 ├── app/auth/callback/ # email-confirmation route handler (exchanges ?code= for a session)
 ├── app/(dashboard)/   # app routes sharing DashboardLayout (sidebar + topbar)
-│   ├── dashboard/     # server page — real posts; stats, recommendation card, accounts widget are mock
+│   ├── dashboard/     # server page — real posts, 30-day stats, recommendation (lib/analytics); accounts widget is mock
 │   ├── campaigns/     # list (server page + CampaignsList) + actions.ts (saveCampaign)
 │   ├── campaigns/new/ # server page → CampaignWizard (real products + brand details)
 │   ├── calendar/      # server page → CalendarView (real posts)
 │   ├── content/       # server page → ContentView (real posts)
 │   ├── products/      # server page → ProductsView + ProductDialog + actions.ts (saveProduct)
 │   ├── brand/         # server page → components/brand/BrandForm + actions.ts (saveBrandProfile)
-│   └── analytics, assistant, social-accounts, subscription, settings  # server pages, mostly mock data
+│   ├── analytics/     # server page → components/analytics/AnalyticsView (real posts + metrics)
+│   └── assistant, social-accounts, subscription, settings  # server pages, mostly mock data
 ├── app/page.tsx       # redirects to /dashboard
 ├── components/
 │   ├── auth/          # AuthForm (shared login/signup form)
 │   ├── layout/        # AppSidebar, TopBar, DashboardLayout
 │   ├── ui/            # shadcn Button + Keh primitives (StatCard, PageHeader, badges, AvailabilityBadge…)
 │   └── campaigns/     # CampaignWizard + CampaignContext + 5 steps: Goal → Content → Platforms → Review → Publish
-├── services/          # data access — business, product, campaign, storage = Supabase; analytics, recommendation, social-account = mock
+├── services/          # data access — business, product, campaign (+ post_metrics), storage = Supabase; recommendation, social-account, analytics.getAudienceLearnings = mock
 ├── data/              # typed mock data (still used by the mock services and mock pages)
 ├── lib/
 │   ├── env.ts         # validated env vars (publicEnv, getSupabaseSecretKey)
+│   ├── analytics.ts   # pure stats: periodSummary, weeklyReach, findings, insights, recommendNextMove
 │   ├── auth/context.ts# getCurrentContext() → { user, business }; redirects to /login if signed out
 │   ├── supabase/      # client.ts (browser), server.ts (server + admin), database.types.ts (hand-written)
 │   ├── ai/            # ai.service.ts — empty stub
@@ -64,6 +66,7 @@ src/
 └── utils/             # index.ts (formatPrice, initials…) + datetime.ts (Manila-time helpers)
 supabase/migrations/   # 001–005 base schema, 007_hardening, 008_product_images (Storage bucket)
 supabase/seed.sql      # dev seed — NOT a migration; needs a matching auth user first
+scripts/seed-demo-data.mjs  # `npm run seed:demo -- --email <owner>`: 8 weeks of published demo posts + metrics (--reset removes them, --list lists businesses)
 ```
 
 There is no `app/api/`, no `src/hooks/`, and no `error.tsx` / `loading.tsx` / `not-found.tsx` yet.
@@ -76,8 +79,9 @@ There is no `app/api/`, no `src/hooks/`, and no `error.tsx` / `loading.tsx` / `n
 - **Mutations:** a `"use server"` `actions.ts` next to the route. Each action calls `getCurrentContext()`, validates with a Zod schema from `lib/validation/schemas.ts`, re-checks ownership of any referenced row, calls a service write function, then `revalidatePath(...)` for every page that shows the data. Return `{ error }` / `{ fieldErrors }` for the UI; `redirect()` on success when navigating away.
 - **Forms:** use `useActionState`, but submit via `onSubmit` + `startTransition(() => formAction(formData))` rather than `<form action>` — React 19 resets action-driven forms after every submit, which wipes input when validation fails (see `AuthForm`, `ProductDialog`).
 - **Dialogs:** native `<dialog>` + `showModal()` (focus trap, Escape and backdrop for free) — see `ProductDialog`.
+- **Stats** live in `lib/analytics.ts` as pure functions over `PostPerformance[]` so server pages and client views (e.g. the Analytics platform filter) compute the same numbers. Only `PUBLISHED` posts count.
 - **Services** map DB rows (snake_case) to domain types (camelCase) with a `toX(row)` mapper; they use `createServerClient()` so RLS applies, and also filter by `businessId` explicitly.
-- **Dates/times:** use `@/utils/datetime` (`manilaDateKey`, `manilaTime`, `todayKey`, `manilaToUtcIso`, `formatDateKey`…). The DB stores UTC `timestamptz`; the UI shows `Asia/Manila`. Never slice ISO strings.
+- **Dates/times:** use `@/utils/datetime` (`manilaDateKey`, `manilaTime`, `manilaWeekdayHour`, `todayKey`, `manilaToUtcIso`, `formatDateKey`…). The DB stores UTC `timestamptz`; the UI shows `Asia/Manila`. Never slice ISO strings.
 - **Images:** upload through `storage.service.ts` (`submittedFile`, `validateImage`, `uploadBusinessImage`) — files go to the `product-images` bucket under `<business_id>/…` (brand images under `<business_id>/brand/…`). Photos are optional (`imageUrl` may be `""`), so guard every `<Image>`.
 
 ### Rules
@@ -109,10 +113,10 @@ There is no `app/api/`, no `src/hooks/`, and no `error.tsx` / `loading.tsx` / `n
 
 ## Still mock / not wired
 
-- **Dashboard:** the "Recommended for this week" card (hard-coded Matcha Latte), stat cards, insight strip and connected-accounts widget are mock.
+- **Dashboard:** only the connected-accounts widget is still mock.
 - **Mock pages:** analytics, assistant ("Ask Keh" returns a template), social accounts (connect/disconnect is local state), settings (toggles do nothing). Subscription shows the real plan/usage, but usage counters aren't incremented yet.
 - **Unwired controls:** content Reuse/Duplicate/Edit, calendar post chips and week view, "Why this recommendation?", notifications bell, subscription Upgrade/Manage. There's no campaign edit/delete and no product delete yet.
-- **Metrics:** `reach` is always 0 on real posts until a metrics pipeline writes `post_metrics`, so "Top Performing" in Content is empty.
+- **Metrics:** nothing collects real platform metrics yet. `getPosts()` reads the latest `post_metrics` row per post (0 when missing); for demos, `npm run seed:demo` backfills published posts with generated metrics. Insights and the Home recommendation are template text from `lib/analytics.ts`, not AI.
 
 ## Roadmap
 
@@ -125,7 +129,7 @@ There is no `app/api/`, no `src/hooks/`, and no `error.tsx` / `loading.tsx` / `n
 | 7 | Planned | Social adapters (Facebook, Instagram; TikTok later) + scheduled-publish job runner |
 | 8 | Planned | Metrics & learning — analytics pipeline, AI recommendations |
 
-Next priorities (see `docs/GAP_ANALYSIS.md` → "Progress"): AI captions → demo polish (hide dead controls, real dashboard stats, delete product/campaign) → error/loading states.
+Next priorities (see `docs/GAP_ANALYSIS.md` → "Progress"): AI captions (and AI-worded insights from `lib/analytics` findings) → demo polish (hide dead controls, delete product/campaign) → error/loading states.
 
 The README's phase table is out of date. The older `.bob/artifacts/keh-refactoring-progress-missing-features.html` predates the gap analysis.
 

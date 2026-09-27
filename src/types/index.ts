@@ -289,6 +289,16 @@ export interface EnrichedPost extends SocialPost {
 }
 
 /**
+ * A post with its latest collected metrics. All numbers are 0 until the
+ * platform metrics for the post have been collected into post_metrics.
+ */
+export interface PostPerformance extends EnrichedPost {
+  /** likes + comments + shares + saves */
+  interactions: number;
+  clicks: number;
+}
+
+/**
  * A campaign enriched with its posts and product.
  * Used in the campaign review and analytics pages.
  */

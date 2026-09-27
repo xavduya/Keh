@@ -7,6 +7,8 @@ interface StatCardProps {
   bottom?: string;
   highlight?: boolean;
   growth?: string;
+  /** Colors the growth line; defaults to "up" (green). */
+  trend?: "up" | "down";
 }
 
 export function StatCard({
@@ -16,6 +18,7 @@ export function StatCard({
   bottom,
   highlight = false,
   growth,
+  trend = "up",
 }: StatCardProps) {
   return (
     <div className="bg-white border border-[#e9e9ef] rounded-[10px] p-5">
@@ -31,7 +34,11 @@ export function StatCard({
         {value}
       </div>
       {growth && (
-        <div className="text-[#23876c] text-[13px] font-semibold mt-1">
+        <div
+          className={`text-[13px] font-semibold mt-1 ${
+            trend === "down" ? "text-[#a6721d]" : "text-[#23876c]"
+          }`}
+        >
           {growth}
         </div>
       )}

@@ -33,6 +33,22 @@ export function manilaTime(value: string | Date): string {
   return timeFormat.format(new Date(value));
 }
 
+const weekdayHourFormat = new Intl.DateTimeFormat("en-US", {
+  timeZone: DEFAULT_TIMEZONE,
+  weekday: "long",
+  hour: "numeric",
+  hourCycle: "h23",
+});
+
+/** Weekday name and 0–23 hour of a timestamp, in Manila time. */
+export function manilaWeekdayHour(value: string | Date): { weekday: string; hour: number } {
+  const parts = weekdayHourFormat.formatToParts(new Date(value));
+  return {
+    weekday: parts.find((p) => p.type === "weekday")?.value ?? "",
+    hour: Number(parts.find((p) => p.type === "hour")?.value ?? 0),
+  };
+}
+
 /** Today's "YYYY-MM-DD" in Manila. */
 export function todayKey(): string {
   return manilaDateKey(new Date());

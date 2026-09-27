@@ -1,19 +1,20 @@
 import Image from "next/image";
 import Link from "next/link";
 import {
-  Sparkles, BarChart2, Calendar, Video, Tag, Clock,
+  Sparkles, BarChart2, Calendar, Tag, Megaphone,
   ChevronRight, Eye, Heart, FileText, Package, AlertTriangle,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { SocialPlatformBadge, PlatformGroup } from "@/components/ui/social-platform-badge";
 import { PostStatusBadge } from "@/components/ui/post-status-badge";
-import { getAnalyticsSummary, getInsights } from "@/services/analytics.service";
 import { getPosts } from "@/services/campaign.service";
+import { getProducts } from "@/services/product.service";
+import { findings, insights, periodSummary, postDateKey, recommendNextMove } from "@/lib/analytics";
 import { getConnectedAccounts } from "@/services/social-account.service";
-import { addDays, formatDateKey, manilaDateKey, manilaTime, todayKey } from "@/utils/datetime";
+import { addDays, formatDateKey, manilaDateKey, manilaTime, manilaWeekdayHour, todayKey } from "@/utils/datetime";
 import { getCurrentContext } from "@/lib/auth/context";
-import type { EnrichedPost } from "@/types";
+import type { CampaignGoal, EnrichedPost } from "@/types";
 
 function groupPostsByDate(posts: EnrichedPost[], today: string) {
   const tomorrow = addDays(today, 1);
@@ -56,12 +57,30 @@ function PostRow({ post }: { post: EnrichedPost }) {
   );
 }
 
+function greeting(hour: number) {
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+function growthLabel(pct: number | null) {
+  if (pct === null) return undefined;
+  return `${pct >= 0 ? "↗" : "↘"} ${Math.abs(pct)}% vs. previous 30 days`;
+}
+
+const QUICK_ACTIONS: { label: string; icon: typeof Package; goal?: CampaignGoal }[] = [
+  { label: "Promote a product", icon: Package, goal: "PROMOTE_PRODUCT" },
+  { label: "Announce something", icon: Megaphone, goal: "ANNOUNCEMENT" },
+  { label: "Create a promotion", icon: Tag, goal: "PROMOTION" },
+  { label: "Keep my page active", icon: Heart, goal: "KEEP_PAGE_ACTIVE" },
+  { label: "Create from scratch", icon: FileText },
+];
+
 export default async function DashboardPage() {
   const { user, business } = await getCurrentContext();
-  const [summary, posts, insights, connectedAccounts] = await Promise.all([
-    getAnalyticsSummary(business.id),
+  const [posts, products, connectedAccounts] = await Promise.all([
     getPosts(business.id),
-    getInsights(business.id),
+    getProducts(business.id),
     getConnectedAccounts(business.id),
   ]);
   const firstName = user.fullName.split(" ")[0];
@@ -72,20 +91,20 @@ export default async function DashboardPage() {
   const actionRequired = posts.find((p) => p.status === "ACTION_REQUIRED");
   const connectedCount = connectedAccounts.length;
 
-  const quickActions = [
-    { label: "Promote a product", icon: Package },
-    { label: "Announce something", icon: Sparkles },
-    { label: "Create a promotion", icon: Tag },
-    { label: "Keep my page active", icon: Heart },
-    { label: "Create from scratch", icon: FileText },
-  ];
+  const summary = periodSummary(posts, todayDate);
+  const found = findings(posts);
+  const insightLines = insights(found, summary);
+  const recommendation = recommendNextMove(found, products);
+  const upcomingCount = posts.filter(
+    (p) => p.status === "SCHEDULED" && postDateKey(p) >= todayDate
+  ).length;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title={
           <>
-            Good afternoon, {firstName}{" "}
+            {greeting(manilaWeekdayHour(new Date()).hour)}, {firstName}{" "}
             <span style={{ fontSize: 25 }}>👋</span>
           </>
         }
@@ -110,42 +129,36 @@ export default async function DashboardPage() {
             <div className="flex gap-5">
               <div className="flex-1">
                 <h2 className="font-heading text-[22px] font-[750] tracking-[-0.03em] text-[#262535] leading-[1.2] mb-3">
-                  Give your Matcha Latte<br />a little more spotlight.
+                  {recommendation.title}
                 </h2>
                 <p className="text-[14px] text-[#7b7b8b] leading-relaxed mb-4">
-                  Your last two Matcha posts received{" "}
-                  <strong className="text-[#5849da]">38% more engagement</strong>{" "}
-                  than your usual product posts. Let&apos;s keep the momentum going.
+                  {recommendation.body}
                 </p>
-                <div className="flex flex-wrap gap-2 mb-5">
-                  {[
-                    { icon: Video, label: "Short video" },
-                    { icon: Tag, label: "Show ₱150 price" },
-                    { icon: null, label: "Casual Taglish" },
-                    { icon: Clock, label: "Fri, 6:00 PM" },
-                  ].map((t) => (
-                    <span
-                      key={t.label}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#e9e9ef] text-[13px] text-[#262535] bg-[#f7f8fb]"
-                    >
-                      {t.icon && <t.icon size={13} className="text-[#7b7b8b]" />}
-                      {t.label}
-                    </span>
-                  ))}
-                </div>
+                {recommendation.chips.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-5">
+                    {recommendation.chips.map((chip) => (
+                      <span
+                        key={chip}
+                        className="px-3 py-1.5 rounded-lg border border-[#e9e9ef] text-[13px] text-[#262535] bg-[#f7f8fb]"
+                      >
+                        {chip}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <Link
-                  href="/campaigns/new"
+                  href={recommendation.href}
                   className="inline-flex items-center gap-2 px-4 py-2.5 rounded-[8px] bg-[#5849da] text-white text-[14px] font-[600] hover:bg-[#4a3cc7] transition-colors"
                 >
                   <Sparkles size={15} />
-                  Create Recommended Campaign
+                  {recommendation.cta}
                 </Link>
               </div>
-              {posts[0]?.product.imageUrl && (
+              {recommendation.imageUrl && (
                 <div className="hidden sm:block relative w-[140px] h-[160px] rounded-[10px] overflow-hidden shrink-0">
                   <Image
-                    src={posts[0].product.imageUrl}
-                    alt={posts[0].product.name}
+                    src={recommendation.imageUrl}
+                    alt=""
                     fill
                     className="object-cover"
                     sizes="140px"
@@ -155,15 +168,17 @@ export default async function DashboardPage() {
               )}
             </div>
           </div>
-          <div className="border-t border-[#e9e9ef] px-6 py-3 flex items-center justify-between">
-            <span className="flex items-center gap-2 text-[13px] text-[#7b7b8b]">
-              <BarChart2 size={13} />
-              Based on your recent performance
-            </span>
-            <button className="text-[13px] text-[#5849da] font-[600] hover:underline">
-              Why this recommendation?
-            </button>
-          </div>
+          <details className="group border-t border-[#e9e9ef] px-6 py-3">
+            <summary className="flex items-center justify-between cursor-pointer list-none text-[13px]">
+              <span className="flex items-center gap-2 text-[#7b7b8b]">
+                <BarChart2 size={13} />
+                {found.measuredCount > 0 ? "Based on your recent results" : "Based on your products"}
+              </span>
+              <span className="text-[#5849da] font-[600] group-open:hidden">Why this recommendation?</span>
+              <span className="text-[#5849da] font-[600] hidden group-open:inline">Hide</span>
+            </summary>
+            <p className="text-[13px] text-[#7b7b8b] mt-2 leading-relaxed">{recommendation.why}</p>
+          </details>
         </div>
 
         {/* Quick actions */}
@@ -172,10 +187,10 @@ export default async function DashboardPage() {
             What would you like to do?
           </h3>
           <div className="space-y-1">
-            {quickActions.map((a) => (
+            {QUICK_ACTIONS.map((a) => (
               <Link
                 key={a.label}
-                href="/campaigns/new"
+                href={a.goal ? `/campaigns/new?goal=${a.goal}` : "/campaigns/new"}
                 className="flex items-center gap-3 px-3 py-3 rounded-[8px] hover:bg-[#f7f8fb] transition-colors group"
               >
                 <span className="w-8 h-8 rounded-[8px] bg-[#f7f8fb] group-hover:bg-[#f0edff] flex items-center justify-center text-[#7b7b8b] group-hover:text-[#5849da] transition-colors shrink-0">
@@ -198,7 +213,7 @@ export default async function DashboardPage() {
             <h2 className="font-heading font-[700] text-[17px] text-[#262535]">
               A little progress, every day
             </h2>
-            <span className="text-[13px] text-[#7b7b8b]">This month</span>
+            <span className="text-[13px] text-[#7b7b8b]">Last 30 days</span>
           </div>
           <Link
             href="/analytics"
@@ -210,40 +225,46 @@ export default async function DashboardPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard
             label="People reached"
-            value={summary.totalReach.toLocaleString()}
+            value={summary.current.reach.toLocaleString()}
             icon={<Eye size={16} />}
-            growth={`↗ ${summary.reachGrowthPct}%`}
-            bottom="vs. last month"
+            growth={growthLabel(summary.reachGrowthPct)}
+            trend={(summary.reachGrowthPct ?? 0) < 0 ? "down" : "up"}
+            bottom={summary.current.reach === 0 ? "Results appear once posts go live" : undefined}
           />
           <StatCard
             label="Interactions"
-            value={summary.totalInteractions.toLocaleString()}
+            value={summary.current.interactions.toLocaleString()}
             icon={<Heart size={16} />}
-            growth={`↗ ${summary.interactionsGrowthPct}%`}
-            bottom="vs. last month"
+            growth={growthLabel(summary.interactionsGrowthPct)}
+            trend={(summary.interactionsGrowthPct ?? 0) < 0 ? "down" : "up"}
+            bottom={summary.current.interactions === 0 ? "Likes, comments, shares and saves" : undefined}
           />
           <StatCard
             label="Posts published"
-            value="18"
+            value={summary.current.published}
             icon={<FileText size={16} />}
-            bottom="Across your connected accounts"
+            bottom={upcomingCount > 0 ? `${upcomingCount} more scheduled` : "Nothing scheduled yet"}
           />
           <StatCard
             label="Best-performing product"
-            value="Matcha Latte"
+            value={found.bestProduct?.value.name ?? "—"}
             icon={<Package size={16} />}
-            bottom="A little green goes a long way"
-            highlight
+            bottom={
+              found.bestProduct
+                ? `${found.bestProduct.avgReach.toLocaleString()} people per post`
+                : "Needs a few published posts"
+            }
+            highlight={Boolean(found.bestProduct)}
           />
         </div>
       </div>
 
       {/* Insight strip */}
-      {insights[0] && (
+      {insightLines[0] && (
         <div className="bg-[#f7f8fb] border border-[#e9e9ef] rounded-[10px] px-5 py-3 flex items-start gap-3">
           <Sparkles size={15} className="text-[#5849da] mt-0.5 shrink-0" />
           <p className="text-[13px] text-[#7b7b8b]">
-            {insights[0]}
+            {insightLines[0]}
           </p>
         </div>
       )}
