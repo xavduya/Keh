@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState } from "react";
-import type { CampaignDraft, Product } from "@/types";
+import type { CampaignDraft, CampaignGoal, Product } from "@/types";
 import { formatPrice } from "@/utils";
 
 /** Business details the wizard writes about — passed in from the server page. */
@@ -67,17 +67,19 @@ export function CampaignProvider({
   products,
   business,
   initialProductId,
+  initialGoal,
 }: {
   children: React.ReactNode;
   products: Product[];
   business: WizardBusiness;
   initialProductId?: string;
+  initialGoal?: CampaignGoal;
 }) {
   const firstProductId =
     products.find((p) => p.id === initialProductId)?.id ?? products[0]?.id ?? "";
 
   const [draft, setDraftState] = useState<CampaignDraft>({
-    goal: "PROMOTE_PRODUCT",
+    goal: initialGoal ?? "PROMOTE_PRODUCT",
     productId: firstProductId,
     promotion: "",
     duration: "",

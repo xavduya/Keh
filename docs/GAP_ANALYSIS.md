@@ -41,6 +41,7 @@ The core loop now works end to end on Supabase: **sign up → add a product → 
 | G11 Auth | ✅ Fixed | Email/password login, sign-up (with business name), sign-out, and the email-confirmation callback. No onboarding flow beyond sign-up. |
 | G12 Products | ✅ Fixed | Add/edit with photo upload (Storage), availability badge, empty state. No delete yet. |
 | Brand profile | ✅ Fixed | Business details, audience and brand voice save to Supabase (with logo and brand image upload); the wizard's captions use them. |
+| Home & Analytics | ✅ Fixed | Real 30-day stats, weekly reach, best product/platform/time, template insights and a data-driven recommendation, all from posts + `post_metrics`. `npm run seed:demo` generates demo history until real metrics are collected. |
 | G13 Supabase setup | 🟡 Partly | Seed moved out of `migrations/`; migrations 001–005 and 007 applied. Still no `supabase/config.toml` or generated types. |
 | G14 DB security | 🟡 Partly | (a) `search_path` pinned, (b) cross-business product checks, (c) OAuth token columns hidden from users — all in migration 007. (d) RLS performance not done. |
 | G16 Empty states / errors | 🟡 Partly | Real-data pages handle "no products / no posts". No `error.tsx` / `loading.tsx` yet; mock pages still crash-prone. |
@@ -49,7 +50,7 @@ The core loop now works end to end on Supabase: **sign up → add a product → 
 **New gaps found while building:**
 
 - **Migrations weren't applied** to the Supabase project in `.env` when this work started, despite the earlier commit message. They are now (001–005, 007); 008 is pending.
-- **Metrics:** real posts always have `reach = 0` until a metrics pipeline exists, so the dashboard stats and "Top Performing" filter can't be real yet.
+- **Metrics:** no pipeline collects real platform metrics yet; Home and Analytics read `post_metrics`, which only the demo seed script fills today.
 - **No edit/delete** for campaigns or products.
 
 ---

@@ -10,8 +10,8 @@ import type {
   Campaign,
   CampaignGoal,
   EnrichedCampaign,
-  EnrichedPost,
   Platform,
+  PostPerformance,
   PostStatus,
   Product,
   SocialPost,
@@ -103,22 +103,57 @@ export async function getEnrichedCampaigns(businessId: string): Promise<Enriched
   });
 }
 
+type LatestMetrics = { reach: number; interactions: number; clicks: number };
+
+/** Latest collected metrics per post (posts without metrics are absent). */
+async function getLatestMetrics(postIds: string[]): Promise<Map<string, LatestMetrics>> {
+  const latest = new Map<string, LatestMetrics>();
+  if (postIds.length === 0) return latest;
+
+  const supabase = await createServerClient();
+  const { data, error } = await supabase
+    .from("post_metrics")
+    .select("*")
+    .in("post_id", postIds)
+    .order("collected_at", { ascending: false });
+  if (error) throw error;
+
+  for (const m of data) {
+    if (latest.has(m.post_id)) continue; // rows are newest first
+    latest.set(m.post_id, {
+      reach: m.reach,
+      interactions: m.likes + m.comments + m.shares + m.saves,
+      clicks: m.clicks,
+    });
+  }
+  return latest;
+}
+
 /**
- * All posts for a business, enriched with their product.
- * `reach` is 0 until the metrics pipeline writes post_metrics.
+ * All posts for a business, enriched with their product and latest metrics
+ * (0 until metrics have been collected), ordered by scheduled time.
  */
-export async function getPosts(businessId: string): Promise<EnrichedPost[]> {
+export async function getPosts(businessId: string): Promise<PostPerformance[]> {
   const [campaigns, products] = await Promise.all([
     getCampaigns(businessId),
     getProducts(businessId),
   ]);
   const posts = await getPostsForCampaigns(campaigns.map((c) => c.id));
+  const metrics = await getLatestMetrics(posts.map((p) => p.id));
   const productById = new Map(products.map((p) => [p.id, p]));
 
   return posts.flatMap((post) => {
     const product = productById.get(post.productId);
     if (!product) return [];
-    return [{ ...post, product, reach: 0, platforms: [post.platform] }];
+    const m = metrics.get(post.id);
+    return [{
+      ...post,
+      product,
+      platforms: [post.platform],
+      reach: m?.reach ?? 0,
+      interactions: m?.interactions ?? 0,
+      clicks: m?.clicks ?? 0,
+    }];
   });
 }
 
