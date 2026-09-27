@@ -58,7 +58,7 @@ function formatDate(value: string) {
     day: "numeric",
     month: "short",
     year: "numeric",
-    timeZone: "UTC",
+    timeZone: "Asia/Manila",
   }).format(new Date(value));
 }
 
@@ -73,14 +73,16 @@ function CampaignCard({ campaign }: { campaign: EnrichedCampaign }) {
     <article className="bg-white rounded-[12px] border border-[#e9e9ef] overflow-hidden">
       <div className="flex flex-col sm:flex-row">
         <div className="relative h-[180px] sm:h-auto sm:w-[190px] sm:min-h-[190px] shrink-0 bg-[#f0edff]">
-          <Image
-            src={campaign.product.imageUrl}
-            alt={campaign.product.name}
-            fill
-            className="object-cover"
-            sizes="(max-width: 640px) 100vw, 190px"
-            unoptimized
-          />
+          {campaign.product.imageUrl && (
+            <Image
+              src={campaign.product.imageUrl}
+              alt={campaign.product.name}
+              fill
+              className="object-cover"
+              sizes="(max-width: 640px) 100vw, 190px"
+              unoptimized
+            />
+          )}
         </div>
 
         <div className="flex flex-1 flex-col gap-3 p-4 sm:p-5 min-w-0">

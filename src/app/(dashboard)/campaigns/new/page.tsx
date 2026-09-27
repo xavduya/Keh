@@ -1,41 +1,32 @@
-"use client";
+import { CampaignWizard } from "@/components/campaigns/CampaignWizard";
+import { getCurrentContext } from "@/lib/auth/context";
+import { getBrandProfile } from "@/services/business.service";
+import { getProducts } from "@/services/product.service";
+import { DEFAULT_CTA_LABELS, LANGUAGE_LABELS, TONE_LABELS } from "@/constants";
 
-import { PageHeader } from "@/components/ui/page-header";
-import { CampaignProvider, useCampaign } from "@/components/campaigns/CampaignContext";
-import { WizardStepper } from "@/components/campaigns/WizardStepper";
-import { GoalStep } from "@/components/campaigns/GoalStep";
-import { ContentStep } from "@/components/campaigns/ContentStep";
-import { PlatformStep } from "@/components/campaigns/PlatformStep";
-import { ReviewStep } from "@/components/campaigns/ReviewStep";
-import { PublishStep } from "@/components/campaigns/PublishStep";
-
-function WizardBody() {
-  const { step } = useCampaign();
+export default async function NewCampaignPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ product?: string }>;
+}) {
+  const { business } = await getCurrentContext();
+  const [products, brand, { product }] = await Promise.all([
+    getProducts(business.id),
+    getBrandProfile(business.id),
+    searchParams,
+  ]);
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Create campaign"
-        subtitle="Tell us what you want to achieve. We'll handle the social media strategy."
-      />
-
-      <WizardStepper />
-
-      <div className="bg-white rounded-[12px] border border-[#e9e9ef] p-6 md:p-8">
-        {step === 0 && <GoalStep />}
-        {step === 1 && <ContentStep />}
-        {step === 2 && <PlatformStep />}
-        {step === 3 && <ReviewStep />}
-        {step === 4 && <PublishStep />}
-      </div>
-    </div>
-  );
-}
-
-export default function NewCampaignPage() {
-  return (
-    <CampaignProvider>
-      <WizardBody />
-    </CampaignProvider>
+    <CampaignWizard
+      products={products.filter((p) => p.availability === "ACTIVE")}
+      initialProductId={product}
+      business={{
+        name: business.name,
+        location: business.location,
+        toneLabel: TONE_LABELS[brand?.tone ?? "FRIENDLY"],
+        languageLabel: LANGUAGE_LABELS[brand?.preferredLanguage ?? business.preferredLanguage],
+        ctaLabel: DEFAULT_CTA_LABELS[brand?.defaultCTA ?? "MESSAGE_US"],
+      }}
+    />
   );
 }
