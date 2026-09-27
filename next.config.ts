@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    serverActions: {
+      // Product photos are uploaded through a Server Action (limit 5 MB, see
+      // MAX_UPLOAD_BYTES). The default 1 MB body limit is too small.
+      bodySizeLimit: "6mb",
+    },
+  },
   images: {
     remotePatterns: [
       // Supabase Storage — your project's public image bucket

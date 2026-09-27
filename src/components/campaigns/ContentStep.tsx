@@ -5,7 +5,6 @@ import { useState } from "react";
 import { Sparkles, ArrowRight } from "lucide-react";
 import { useCampaign } from "./CampaignContext";
 import { SocialPlatformBadge } from "@/components/ui/social-platform-badge";
-import { mockProducts } from "@/data/mock-products";
 import type { Platform } from "@/types";
 
 const PLATFORMS: Platform[] = ["FACEBOOK", "INSTAGRAM", "TIKTOK"];
@@ -16,10 +15,9 @@ const PLATFORM_LABELS: Record<Platform, string> = {
 };
 
 export function ContentStep() {
-  const { draft, setDraft, nextStep, prevStep, generateCaptions } = useCampaign();
+  const { draft, setDraft, nextStep, prevStep, generateCaptions, product, business } = useCampaign();
   const [activePlatform, setActivePlatform] = useState<Platform>("FACEBOOK");
 
-  const product = mockProducts.find((p) => p.id === draft.productId) ?? mockProducts[0];
 
   function handleCaptionChange(val: string) {
     setDraft({ captions: { ...draft.captions, [activePlatform]: val } });
@@ -99,7 +97,7 @@ export function ContentStep() {
             <div className="bg-[#f0edff] text-[#5849da] rounded-lg px-4 py-3 text-[13px]">
               {draft.instructions || "Keep it simple and welcoming."}
               <br />
-              Strategy: short video · clear price · Taglish caption
+              Strategy: short video · clear price · {business.languageLabel} caption
             </div>
           )}
         </div>
@@ -111,16 +109,18 @@ export function ContentStep() {
               ☕
             </span>
             <div>
-              <p className="text-[14px] font-[600] text-[#262535]">Juan&apos;s Café</p>
+              <p className="text-[14px] font-[600] text-[#262535]">{business.name}</p>
               <p className="text-[12px] text-[#7b7b8b]">Preview · {PLATFORM_LABELS[activePlatform]}</p>
             </div>
             <span className="ml-auto">
               <SocialPlatformBadge platform={activePlatform} size="sm" />
             </span>
           </div>
-          <div className="relative w-full h-[200px]">
-            <Image src={product.imageUrl} alt={product.name} fill className="object-cover" sizes="400px" unoptimized />
-          </div>
+          {product?.imageUrl && (
+            <div className="relative w-full h-[200px]">
+              <Image src={product.imageUrl} alt={product.name} fill className="object-cover" sizes="400px" unoptimized />
+            </div>
+          )}
           <div className="px-4 py-3">
             <p className="text-[13px] text-[#262535] whitespace-pre-wrap leading-relaxed">
               {caption}
