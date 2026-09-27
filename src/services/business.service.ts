@@ -11,6 +11,8 @@ import type {
   BusinessRow,
   BrandProfileRow,
   SubscriptionRow,
+  UpdateBusiness,
+  UpdateBrandProfile,
 } from "@/lib/supabase/database.types";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -119,6 +121,78 @@ export async function getBrandProfile(
 
   if (error) throw error;
   return data ? toBrandProfile(data) : null;
+}
+
+/** Business details editable on the brand page. */
+export type BusinessDetails = Pick<
+  Business,
+  | "name" | "description" | "industry" | "location" | "operatingHours" | "phone"
+  | "website" | "delivery" | "payment" | "targetAudience" | "audienceAgeGroup"
+  | "audienceInterests" | "preferredLanguage"
+>;
+
+export async function updateBusiness(
+  businessId: string,
+  details: BusinessDetails
+): Promise<void> {
+  const fields: UpdateBusiness = {
+    name: details.name,
+    description: details.description,
+    industry: details.industry,
+    location: details.location,
+    operating_hours: details.operatingHours,
+    phone: details.phone,
+    website: details.website,
+    delivery: details.delivery || null,
+    payment: details.payment || null,
+    target_audience: details.targetAudience,
+    audience_age_group: details.audienceAgeGroup || null,
+    audience_interests: details.audienceInterests || null,
+    preferred_language: details.preferredLanguage,
+  };
+  const supabase = await createServerClient();
+  const { error } = await supabase.from("businesses").update(fields).eq("id", businessId);
+  if (error) throw error;
+}
+
+/** Brand voice fields; image URLs are only changed when provided. */
+export type BrandProfileUpdate = Omit<BrandProfile, "businessId">;
+
+export async function updateBrandProfile(
+  businessId: string,
+  profile: BrandProfileUpdate
+): Promise<void> {
+  const fields: UpdateBrandProfile = {
+    tone: profile.tone,
+    preferred_language: profile.preferredLanguage,
+    brand_colors: profile.brandColors,
+    default_cta: profile.defaultCTA,
+    brand_guidelines: profile.brandGuidelines || null,
+    ...(profile.logoUrl !== undefined && { logo_url: profile.logoUrl }),
+    ...(profile.brandImageUrl !== undefined && { brand_image_url: profile.brandImageUrl }),
+  };
+  const supabase = await createServerClient();
+  const { data, error } = await supabase
+    .from("brand_profiles")
+    .update(fields)
+    .eq("business_id", businessId)
+    .select("id");
+  if (error) throw error;
+
+  // Sign-up creates the brand profile; create it here only if it's missing.
+  if (data.length === 0) {
+    const { error: insertError } = await supabase.from("brand_profiles").insert({
+      business_id: businessId,
+      tone: profile.tone,
+      preferred_language: profile.preferredLanguage,
+      brand_colors: profile.brandColors,
+      default_cta: profile.defaultCTA,
+      brand_guidelines: profile.brandGuidelines || null,
+      logo_url: profile.logoUrl ?? null,
+      brand_image_url: profile.brandImageUrl ?? null,
+    });
+    if (insertError) throw insertError;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
