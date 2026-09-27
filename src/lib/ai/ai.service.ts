@@ -3,9 +3,10 @@
  *
  * generateMarketingAdvice() answers the owner's marketing questions and can
  * fill in the campaign wizard for them ("action"), always listing every field
- * it changed and why. With OPENAI_API_KEY set it asks the model; otherwise —
- * or if the model call fails or returns something unusable — a built-in
- * guided engine answers from the business profile, catalog and results.
+ * it changed and why. With GEMINI_API_KEY (or OPENAI_API_KEY) set it asks a
+ * model (see providers.ts); otherwise — or if the call fails or returns
+ * something unusable — a built-in guided engine answers from the business
+ * profile, catalog and results.
  *
  * Server-only: called from app/api/assistant/route.ts. Every response is
  * sanitized (sanitizeResponse) so the wizard only ever receives real product
@@ -33,6 +34,7 @@ import type { PostingSlot } from "@/lib/analytics";
 import { formatPrice } from "@/utils";
 import { formatDateKey, nextWeekday, todayKey } from "@/utils/datetime";
 import { z } from "zod";
+import { generateJson } from "./providers";
 
 type MarketingAssistantRequest = z.infer<
   typeof MarketingAssistantRequestSchema
@@ -77,17 +79,9 @@ export interface MarketingAssistantContext {
   } | null;
   /** Best time to post: from results, or the Friday-evening default. */
   slot: PostingSlot;
+  /** The business's latest captions, so the model doesn't repeat itself. */
+  recentCaptions?: string[];
 }
-
-const OpenAIResponseSchema = z.object({
-  choices: z.array(
-    z.object({
-      message: z.object({
-        content: z.string().nullable(),
-      }),
-    })
-  ),
-});
 
 /**
  * Model output is parsed leniently: a usable answer is kept even when an
@@ -853,14 +847,24 @@ function createSystemPrompt(context: MarketingAssistantContext): string {
     "- Captions: one per selected platform, in the business's preferred language and brand tone, ending with the business's call to action. Facebook: warm and story-led. Instagram: short lines, a few hashtags. TikTok: a hook line plus a 3-step video plan for the owner.",
     '- If the request intent is "captions", change only captions. If it is "schedule", change only scheduledDate and scheduledTime.',
     "- Keh saves and schedules posts; it does not publish them yet. Never claim a post was published.",
+    "",
+    "Make it specific to THIS business — generic copy is the main thing to avoid:",
+    "- Every caption uses at least two concrete details from the context: the product's description or notes, the exact price (and promo price), the location, opening hours, delivery or payment options, or the target audience.",
+    "- Match what's being sold. A beer gets 'ice-cold', pulutan and barkada nights (and ends with 'Drink responsibly.'); coffee gets the pour and the study break; a salon gets the before/after. Never call a drink or service a 'treat' unless it is one.",
+    "- Don't use filler phrases like: 'treat yourself', 'your next favorite', 'don't miss out', 'look no further', 'elevate', 'indulge', 'something special', 'made with love', 'the wait is over', 'you deserve it'.",
+    "- Use local timing when it fits the date: payday (15th and 30th / 'sweldo'), ber months and Christmas, weekends, rainy season, summer.",
+    "- The owner's instructions are a brief for you — follow them, don't paste them into the caption.",
+    "- Vary the structure and opening line from the recent captions listed in the context; never reuse their first lines.",
+    "- Ideas must name a real product from the list and say why it fits now (a result, a promo price, a date, a season).",
     "- Only cite performance numbers that appear in the context. If performance is null, say there are no results yet.",
     "",
     `Recommended posting slot: ${context.slot.label}${context.slot.fromResults ? " (from this business's results)" : " (default; no results yet)"}, around ${context.slot.time}.`,
-    `Business, brand, products and performance:\n${JSON.stringify({
+    `Business, brand, products, performance and recent captions:\n${JSON.stringify({
       business: context.business,
       brandProfile: context.brandProfile,
       products: context.products,
       performance: context.performance,
+      recentCaptions: context.recentCaptions ?? [],
     })}`,
   ].join("\n");
 }
@@ -995,53 +999,27 @@ export async function generateMarketingAdvice(
 ): Promise<MarketingAssistantResponse> {
   const guided = () => sanitizeResponse(createGuidedMarketingResponse(request, context), context);
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return guided();
+  const text = await generateJson(createSystemPrompt(context), [
+    ...request.history,
+    {
+      role: "user",
+      content: [
+        request.question,
+        "",
+        `Request intent: ${request.actionIntent ?? "chat"}`,
+        `Current wizard step: ${request.currentStep ?? "not in the wizard"}`,
+        `Current draft: ${JSON.stringify(request.currentDraft ?? {})}`,
+      ].join("\n"),
+    },
+  ]);
+  if (!text) return guided();
 
   try {
-    const messages = [
-      { role: "system", content: createSystemPrompt(context) },
-      ...request.history.map(({ role, content }) => ({ role, content })),
-      {
-        role: "user",
-        content: [
-          request.question,
-          "",
-          `Request intent: ${request.actionIntent ?? "chat"}`,
-          `Current wizard step: ${request.currentStep ?? "not in the wizard"}`,
-          `Current draft: ${JSON.stringify(request.currentDraft ?? {})}`,
-        ].join("\n"),
-      },
-    ];
-
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-        messages,
-        response_format: { type: "json_object" },
-        max_tokens: 2000,
-        temperature: 0.6,
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
-
-    if (!response.ok) {
-      console.warn(`OpenAI request failed with status ${response.status}; using guided mode.`);
-      return guided();
-    }
-
-    const parsed = OpenAIResponseSchema.safeParse(await response.json());
-    const content = parsed.success ? parsed.data.choices[0]?.message.content?.trim() : undefined;
-    if (!content) return guided();
-
-    const structured = StructuredResultSchema.safeParse(stripNulls(JSON.parse(content)));
+    // Some models wrap JSON in a ```json fence despite being told not to.
+    const json = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+    const structured = StructuredResultSchema.safeParse(stripNulls(JSON.parse(json)));
     if (!structured.success) {
-      console.warn("OpenAI returned an unexpected shape; using guided mode.", structured.error.issues[0]);
+      console.warn("The model returned an unexpected shape; using guided mode.", structured.error.issues[0]);
       return guided();
     }
 
@@ -1052,15 +1030,15 @@ export async function generateMarketingAdvice(
     });
     const action = rawAction === undefined ? undefined : LenientActionSchema.safeParse(rawAction);
     if (action && !action.success) {
-      console.warn("OpenAI returned an unusable campaign action; keeping the answer only.", action.error.issues[0]);
+      console.warn("The model returned an unusable campaign action; keeping the answer only.", action.error.issues[0]);
     }
 
     return sanitizeResponse(
-      { answer, ideas, action: action?.success ? action.data : undefined, mode: "openai" },
+      { answer, ideas, action: action?.success ? action.data : undefined, mode: "ai" },
       context
     );
   } catch (error) {
-    console.error("OpenAI call failed; using guided mode.", error);
+    console.warn("The model's reply wasn't valid JSON; using guided mode.", error);
     return guided();
   }
 }

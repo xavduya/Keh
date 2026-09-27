@@ -382,8 +382,8 @@ export type AssistantIntent = "chat" | "ideas" | "fill" | "captions" | "schedule
 /** Response from POST /api/assistant. */
 export interface MarketingAssistantResponse {
   answer: string;
-  /** "openai" when a model answered; "guided" for the built-in rules engine. */
-  mode: "openai" | "guided";
+  /** "ai" when a language model answered; "guided" for the built-in rules engine. */
+  mode: "ai" | "guided";
   action?: MarketingCampaignAction;
   ideas?: MarketingIdea[];
 }

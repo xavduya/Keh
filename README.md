@@ -32,7 +32,8 @@ Copy `.env.example` to `.env.local` and fill in the values:
 cp .env.example .env.local
 ```
 
-Set `OPENAI_API_KEY` in `.env.local` to enable model-powered Keh marketing
+Set `GEMINI_API_KEY` (free tier, https://aistudio.google.com/apikey) or
+`OPENAI_API_KEY` in `.env.local` to enable model-powered Keh marketing
 conversations. The key is used only on the server. Without it, the assistant
 uses a clearly labeled guided mode based on the signed-in business profile,
 product catalog and the business's own post results. Real platform metrics
