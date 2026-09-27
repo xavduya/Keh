@@ -4,8 +4,10 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { ImagePlus, RotateCcw } from "lucide-react";
 import { MAX_UPLOAD_BYTES } from "@/constants";
+import { MAX_ORIGINAL_BYTES, PRODUCT_PHOTO, prepareImage, setInputFile } from "@/utils/image";
 
-const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+/** What the picker offers; every photo is converted to JPG before upload. */
+const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"];
 
 interface PhotoPickerProps {
   /** Form field name the file is submitted under. */
@@ -20,6 +22,10 @@ interface PhotoPickerProps {
  * Photo upload area: click or drag a photo in, see a preview right away.
  * The real <input type="file"> is visually hidden inside the label, so it
  * still submits with the form and stays keyboard-accessible.
+ *
+ * The chosen photo is resized and converted to JPG in the browser (see
+ * utils/image.ts) and swapped onto the input, so uploads are small and
+ * Instagram can always publish them.
  */
 export function PhotoPicker({ name, currentUrl, error }: PhotoPickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -27,6 +33,7 @@ export function PhotoPicker({ name, currentUrl, error }: PhotoPickerProps) {
   const [fileLabel, setFileLabel] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [processing, setProcessing] = useState(false);
 
   // Free the preview's object URL when it's replaced or the dialog closes.
   const previewRef = useRef<string | null>(null);
@@ -46,22 +53,36 @@ export function PhotoPicker({ name, currentUrl, error }: PhotoPickerProps) {
     setFileLabel(null);
   }
 
-  function handleFiles(files: FileList | null) {
+  async function handleFiles(files: FileList | null) {
     const file = files?.[0];
     if (!file) return;
-    if (!ACCEPTED_TYPES.includes(file.type)) {
+    // Some phones report no type for HEIC; let the browser try to read it.
+    if (file.type && !ACCEPTED_TYPES.includes(file.type)) {
       clearSelection();
-      setLocalError("Use a JPG, PNG, WebP or GIF image.");
+      setLocalError("Use a photo (JPG, PNG, WebP, GIF or HEIC).");
       return;
     }
-    if (file.size > MAX_UPLOAD_BYTES) {
+    if (file.size > MAX_ORIGINAL_BYTES) {
       clearSelection();
-      setLocalError("That photo is over 5 MB. Try a smaller one.");
+      setLocalError("That photo is over 25 MB. Try a smaller one.");
       return;
     }
+
     setLocalError(null);
-    showPreview(URL.createObjectURL(file));
-    setFileLabel(`${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB`);
+    setProcessing(true);
+    try {
+      const jpg = await prepareImage(file, PRODUCT_PHOTO);
+      if (jpg.size > MAX_UPLOAD_BYTES) throw new Error("Still too large after resizing");
+      if (inputRef.current) setInputFile(inputRef.current, jpg);
+      showPreview(URL.createObjectURL(jpg));
+      setFileLabel(`${jpg.name} · ${(jpg.size / 1024 / 1024).toFixed(1)} MB`);
+    } catch (err) {
+      console.warn("Couldn't prepare photo", err);
+      clearSelection();
+      setLocalError("We couldn't read that photo. Try a JPG or PNG — or on iPhone, a screenshot of it.");
+    } finally {
+      setProcessing(false);
+    }
   }
 
   function handleDrop(event: React.DragEvent<HTMLLabelElement>) {
@@ -118,10 +139,16 @@ export function PhotoPicker({ name, currentUrl, error }: PhotoPickerProps) {
 
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="text-[14px] font-semibold text-brand-dark">
-            {preview ? "New photo selected" : shown ? "Current photo" : "Click to upload or drag a photo here"}
+            {processing
+              ? "Preparing photo…"
+              : preview
+                ? "New photo selected"
+                : shown
+                  ? "Current photo"
+                  : "Click to upload or drag a photo here"}
           </span>
           <span id={`${name}-hint`} className="truncate text-[12px] text-brand-muted">
-            {fileLabel ?? "JPG, PNG, WebP or GIF · up to 5 MB"}
+            {fileLabel ?? "Any photo · we resize it and save it as a JPG"}
           </span>
           <span className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-[13px] font-semibold text-white transition-colors group-hover:bg-[#4a3cc7]">
             <ImagePlus size={14} aria-hidden="true" />

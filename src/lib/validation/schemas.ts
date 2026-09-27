@@ -207,3 +207,22 @@ export const BrandFormSchema = z.object({
 });
 
 export type BrandFormValues = z.infer<typeof BrandFormSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Onboarding (a few fields per step; the brand page edits the rest)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const OnboardingBusinessSchema = BrandFormSchema.pick({
+  name: true,
+  industry: true,
+  location: true,
+  description: true,
+  targetAudience: true,
+});
+
+export const OnboardingBrandSchema = BrandFormSchema.pick({
+  tone: true,
+  preferredLanguage: true,
+  defaultCTA: true,
+  brandColor: true,
+});

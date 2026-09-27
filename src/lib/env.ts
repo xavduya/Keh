@@ -58,3 +58,12 @@ export function getMetaCredentials(): { appId: string; appSecret: string } {
 export function isPublishingEnabled(): boolean {
   return process.env.PUBLISHING_ENABLED === "true";
 }
+
+/**
+ * Paid plans. Off unless BILLING_ENABLED=true. There is no payment
+ * provider yet: when on, plan changes go through the demo checkout
+ * (lib/billing), which applies them immediately without payment.
+ */
+export function isBillingEnabled(): boolean {
+  return process.env.BILLING_ENABLED === "true";
+}

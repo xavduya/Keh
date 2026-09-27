@@ -1,19 +1,34 @@
-import { Check } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { HintBox } from "@/components/ui/hint-box";
+import { PlanPicker } from "@/components/billing/PlanPicker";
 import { getSubscription } from "@/services/business.service";
 import { SUBSCRIPTION_PLANS } from "@/constants";
 import { getCurrentContext } from "@/lib/auth/context";
+import { getBillingProvider } from "@/lib/billing/provider";
+import { isBillingEnabled } from "@/lib/env";
+import { formatManilaDate } from "@/utils/datetime";
 
-
-function ProgressBar({ used, limit }: { used: number; limit: number }) {
-  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+function Usage({ label, used, limit, note }: { label: string; used: number; limit: number; note: string }) {
+  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 100;
   return (
-    <div className="w-full h-2 bg-[#e9e9ef] rounded-full overflow-hidden">
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-[14px]">
+        <strong className="text-brand-dark">{label}</strong>
+        <span className="text-brand-muted font-[600]">
+          {used} / {limit}
+        </span>
+      </div>
       <div
-        className="h-full bg-[#5849da] rounded-full transition-all"
-        style={{ width: `${pct}%` }}
-      />
+        className="w-full h-2 bg-brand-line rounded-full overflow-hidden"
+        role="progressbar"
+        aria-label={label}
+        aria-valuenow={used}
+        aria-valuemin={0}
+        aria-valuemax={limit}
+      >
+        <div className="h-full bg-brand rounded-full" style={{ width: `${pct}%` }} />
+      </div>
+      <p className="text-[13px] text-brand-muted">{note}</p>
     </div>
   );
 }
@@ -21,100 +36,52 @@ function ProgressBar({ used, limit }: { used: number; limit: number }) {
 export default async function SubscriptionPage() {
   const { business } = await getCurrentContext();
   const sub = await getSubscription(business.id);
-  if (!sub) return null;
-  const plan = SUBSCRIPTION_PLANS.find((p) => p.id === sub.plan) ?? SUBSCRIPTION_PLANS[1];
+  if (!sub) {
+    return (
+      <HintBox>We couldn&apos;t find your plan. Refresh the page, or contact support if this keeps happening.</HintBox>
+    );
+  }
+  const plan = SUBSCRIPTION_PLANS.find((p) => p.id === sub.plan) ?? SUBSCRIPTION_PLANS[0];
   const { usage } = sub;
-
-  const features = [
-    `1 business`,
-    `${plan.socialAccounts} social accounts`,
-    `${plan.scheduledPostsPerMonth} scheduled posts each month`,
-    `${plan.aiCampaignsPerMonth} AI campaigns each month`,
-  ];
+  const billingEnabled = isBillingEnabled();
+  const left = (limit: number, used: number) => Math.max(limit - used, 0);
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="Your subscription"
-        subtitle="A little help for your next chapter."
-      />
+      <PageHeader title="Your subscription" subtitle={`You're on the ${plan.name} plan.`} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Current plan */}
-        <section className="bg-white rounded-[12px] border border-[#e9e9ef] p-6 flex flex-col gap-4">
-          <span className="inline-flex items-center px-2 py-1 rounded-md bg-[#f0edff] text-[#5849da] text-[12px] font-[700] self-start">
-            Your current plan
-          </span>
-          <div>
-            <h2 className="font-heading font-[750] text-[22px] text-[#262535]">{plan.name}</h2>
-            <div className="flex items-baseline gap-1 mt-1">
-              <span className="font-heading font-[750] text-[32px] text-[#262535]">
-                ₱{plan.pricePerMonth}
-              </span>
-              <span className="text-[14px] text-[#7b7b8b]">/ month</span>
-            </div>
-          </div>
-          <p className="text-[14px] text-[#7b7b8b]">
-            Everything you need to start showing up consistently.
+      <section className="bg-white rounded-[12px] border border-brand-line p-6 space-y-5">
+        <div>
+          <h2 className="font-heading font-[700] text-[17px] text-brand-dark">Your usage this month</h2>
+          <p className="text-[13px] text-brand-muted mt-1">
+            Resets {formatManilaDate(usage.resetsAt, { month: "long", day: "numeric", year: "numeric" })}
           </p>
-          <ul className="space-y-2 flex-1">
-            {features.map((f) => (
-              <li key={f} className="flex items-center gap-3 text-[14px] text-[#262535]">
-                <Check size={15} className="text-[#5849da] shrink-0" />
-                {f}
-              </li>
-            ))}
-          </ul>
-          <div className="flex gap-2 pt-2">
-            <button className="px-4 py-2.5 rounded-[8px] bg-[#5849da] text-white text-[14px] font-[600] hover:bg-[#4a3cc7] transition-colors">
-              Upgrade plan
-            </button>
-            <button className="px-4 py-2.5 rounded-[8px] border border-[#e9e9ef] text-[14px] font-[500] hover:bg-[#f7f8fb] transition-colors">
-              Manage subscription
-            </button>
-          </div>
-        </section>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Usage
+            label="Campaigns"
+            used={usage.aiCampaignsUsed}
+            limit={usage.aiCampaignsLimit}
+            note={`${left(usage.aiCampaignsLimit, usage.aiCampaignsUsed)} left this month.`}
+          />
+          <Usage
+            label="Scheduled posts"
+            used={usage.scheduledPostsUsed}
+            limit={usage.scheduledPostsLimit}
+            note={`${left(usage.scheduledPostsLimit, usage.scheduledPostsUsed)} left this month.`}
+          />
+        </div>
+      </section>
 
-        {/* Usage */}
-        <section className="bg-white rounded-[12px] border border-[#e9e9ef] p-6 flex flex-col gap-5">
-          <div>
-            <h2 className="font-heading font-[700] text-[17px] text-[#262535]">Your usage this month</h2>
-            <p className="text-[13px] text-[#7b7b8b] mt-1">
-              Resets {new Date(sub.usage.resetsAt).toLocaleDateString("en-PH", { month: "long", day: "numeric", year: "numeric" })}
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-[14px]">
-              <strong className="text-[#262535]">AI campaigns</strong>
-              <span className="text-[#7b7b8b] font-[600]">
-                {usage.aiCampaignsUsed} / {usage.aiCampaignsLimit}
-              </span>
-            </div>
-            <ProgressBar used={usage.aiCampaignsUsed} limit={usage.aiCampaignsLimit} />
-            <p className="text-[13px] text-[#7b7b8b]">
-              {usage.aiCampaignsLimit - usage.aiCampaignsUsed} more ideas waiting to happen.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-[14px]">
-              <strong className="text-[#262535]">Scheduled posts</strong>
-              <span className="text-[#7b7b8b] font-[600]">
-                {usage.scheduledPostsUsed} / {usage.scheduledPostsLimit}
-              </span>
-            </div>
-            <ProgressBar used={usage.scheduledPostsUsed} limit={usage.scheduledPostsLimit} />
-            <p className="text-[13px] text-[#7b7b8b]">
-              Room for {usage.scheduledPostsLimit - usage.scheduledPostsUsed} more moments.
-            </p>
-          </div>
-
-          <HintBox className="mt-auto">
-            Illustrative plan and usage. No payment method is connected to this prototype.
-          </HintBox>
-        </section>
-      </div>
+      <section className="space-y-3">
+        <h2 className="font-heading font-[700] text-[17px] text-brand-dark">Plans</h2>
+        <PlanPicker currentPlan={sub.plan} billingEnabled={billingEnabled} />
+        <HintBox>
+          {billingEnabled
+            ? `${getBillingProvider().label}. Plan changes apply right away.`
+            : "Paid plans are coming soon. Everyone is on the Free plan for now."}
+        </HintBox>
+      </section>
     </div>
   );
 }

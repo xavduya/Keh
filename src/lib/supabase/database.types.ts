@@ -97,6 +97,8 @@ export type BusinessRow = {
   payment: string | null;
   audience_age_group: string | null;
   audience_interests: string | null;
+  /** Set when onboarding is finished or skipped (migration 017). */
+  onboarded_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -243,7 +245,9 @@ export type RecommendationDetails = {
 // Insert types (what INSERT / upsert expects — omits server-generated fields)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type InsertBusiness = Omit<BusinessRow, "id" | "created_at" | "updated_at">;
+export type InsertBusiness = Omit<BusinessRow, "id" | "created_at" | "updated_at" | "onboarded_at"> & {
+  onboarded_at?: string | null;
+};
 export type InsertBrandProfile = Omit<BrandProfileRow, "id" | "created_at" | "updated_at">;
 export type InsertProduct = Omit<ProductRow, "id" | "campaign_count" | "created_at" | "updated_at">;
 export type InsertSocialAccount = Omit<SocialAccountRow, "id" | "created_at" | "updated_at">;

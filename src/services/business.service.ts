@@ -37,6 +37,8 @@ function toBusiness(row: BusinessRow): Business {
     payment: row.payment ?? undefined,
     audienceAgeGroup: row.audience_age_group ?? undefined,
     audienceInterests: row.audience_interests ?? undefined,
+    // undefined = migration 017 not applied yet: don't send anyone to onboarding.
+    onboarded: row.onboarded_at !== null,
     createdAt: row.created_at,
   };
 }
@@ -152,6 +154,16 @@ export async function updateBusiness(
   };
   const supabase = await createServerClient();
   const { error } = await supabase.from("businesses").update(fields).eq("id", businessId);
+  if (error) throw error;
+}
+
+/** Marks onboarding as finished (or skipped). */
+export async function markOnboarded(businessId: string): Promise<void> {
+  const supabase = await createServerClient();
+  const { error } = await supabase
+    .from("businesses")
+    .update({ onboarded_at: new Date().toISOString() })
+    .eq("id", businessId);
   if (error) throw error;
 }
 

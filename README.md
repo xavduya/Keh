@@ -7,7 +7,8 @@ Keh is a social media manager for small business owners. The owner makes the bus
 | Area | Status |
 |---|---|
 | Sign up / log in | Supabase Auth; sign-up creates the business, brand profile and a Free subscription |
-| Products | Add and edit products with photos (Supabase Storage) |
+| Onboarding | A short guided setup after sign-up: business details → brand voice (tone, language, call to action, color, logo) → first product → plan. Can be skipped |
+| Products | Add, edit and delete products. Photos are resized and saved as JPG in the browser (Instagram-ready, small uploads) |
 | Campaign wizard | Goal → content (AI-written captions) → platforms → review → schedule. Edit, reschedule or delete campaigns later |
 | Campaigns, Calendar, Content, Home | Real data, with live refresh across open tabs |
 | Publishing | **Placeholder for the MVP:** scheduled posts are saved to the calendar, nothing is posted. Posting to Facebook / Instagram and metrics collection are built but switched off (see "Publishing to social platforms") |
@@ -15,10 +16,10 @@ Keh is a social media manager for small business owners. The owner makes the bus
 | AI marketing manager | Chat, "fill the campaign for me", caption rewrites and weekly recommendations. Gemini or OpenAI, with a rules-based fallback when neither is configured |
 | Brand profile | Business details, brand voice, logo and brand image |
 | Social accounts | Connect a Facebook Page and Instagram Business account (Meta OAuth, choose between Pages, tokens encrypted); TikTok by username |
-| Plan limits | Monthly campaign / scheduled-post limits and a daily AI request limit per plan |
+| Plans & billing | Four plans with monthly campaign / scheduled-post limits and a daily AI limit. **Placeholder:** no payment provider yet — with `BILLING_ENABLED=true` a demo checkout switches plans instantly; otherwise everyone is on Free |
 | Account | Password reset, change password or email, delete account |
 
-**Not built yet:** onboarding and billing. **Not decided yet:** where to deploy (see "Deployment"). Publishing is built but off. See [docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) and the "Known gaps" section of [CLAUDE.md](CLAUDE.md).
+**Not built yet:** a real payment provider (billing is a placeholder). **Not deployed yet** — see "Deployment" for the recommended host. Publishing is built but off. See [docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) and the "Known gaps" section of [CLAUDE.md](CLAUDE.md).
 
 ## Tech stack
 
@@ -46,12 +47,13 @@ Keh is a social media manager for small business owners. The owner makes the bus
    | `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`, `GEMINI_THINKING_LEVEL` | No | See `.env.example` |
    | `META_APP_ID`, `META_APP_SECRET` | No | Needed to connect Facebook / Instagram |
    | `SOCIAL_TOKEN_KEY` | To connect Facebook / Instagram | Encrypts platform tokens; 32 random bytes, base64 (command in `.env.example`) |
+   | `BILLING_ENABLED` | No | `true` turns on the demo checkout (plan changes without payment); `false` keeps everyone on Free |
    | `PUBLISHING_ENABLED` | No | Leave `false` for the MVP (see "Publishing to social platforms") |
    | `CRON_SECRET` | Only with publishing on | Shared secret for the scheduled jobs (16+ random characters) |
 
    Never commit `.env.local` or any file with real credentials.
 
-3. **Database.** Run the SQL files in `supabase/migrations/` in order (001 → 015; there is no 006) in the Supabase SQL editor. The project isn't linked to the Supabase CLI yet. Skip 016 for now — it's only for switching publishing on after deploying.
+3. **Database.** Run the SQL files in `supabase/migrations/` in order (001 → 015, then 017; there is no 006) in the Supabase SQL editor. The project isn't linked to the Supabase CLI yet. Skip 016 for now — it's only for switching publishing on after deploying.
 
 4. **Supabase settings.**
    - Add `http://localhost:3000/auth/callback` (and your deployed URL) to Auth → URL Configuration → Redirect URLs, or turn off "Confirm email" for local testing.
@@ -74,19 +76,40 @@ npm run seed:demo -- --email owner@example.com           # add ~8 weeks of demo 
 npm run seed:demo -- --email owner@example.com --reset   # remove them again
 ```
 
-## Deployment — not decided yet
+## Deployment
 
-Keh isn't deployed anywhere, and we haven't chosen a host. Until we do, run it locally (above). When we pick one, this is what it needs:
+Keh isn't deployed yet. Whatever host we use needs:
 
 - **A Node.js server runtime** (Node 22). Keh uses Server Components, Server Actions and Route Handlers, so it can't be a static export.
 - **Environment variables** from the table above, set in the host's dashboard (never committed).
 - **Supabase settings:** add `https://<our-domain>/auth/callback` to Auth → URL Configuration → Redirect URLs, and set the Site URL to the domain.
 - **Meta app** (only when publishing is switched on): add `https://<our-domain>/auth/social/callback` as a Valid OAuth Redirect URI.
-- **Upload size:** product and brand photos go through Server Actions (up to 5 MB each, 11 MB per request). Some serverless hosts cap request bodies lower — see below.
+- **Upload size:** photos are resized in the browser before upload (usually well under 1 MB); the server accepts up to 5 MB per image.
+
+### Recommendation: Vercel
+
+For where Keh is now (a hackathon MVP a small team demos and iterates on), **deploy to Vercel**:
+
+- **Built for Next.js.** Keh is on Next.js 16; Vercel supports each release on day one, with no config (Server Actions, Route Handlers, image handling, `proxy.ts`).
+- **A preview URL for every pull request**, so teammates and judges can try a branch before it's merged.
+- **Free to start.** The Hobby plan covers demos and testing.
+- **The upload limit no longer matters.** Photos are resized in the browser before upload (`utils/image.ts`), so a product photo is ~0.5 MB, far under Vercel's ~4.5 MB request limit.
+- **Scheduled jobs don't need Vercel Cron** — they're triggered by Supabase pg_cron, which works on any host.
+
+How to set it up:
+
+1. Import the GitHub repo at vercel.com/new (framework: Next.js, defaults are fine).
+2. Add the environment variables from `.env.example` (Settings → Environment Variables).
+3. Settings → Functions → **Function Region**: pick the one closest to your Supabase project's region (Supabase → Project Settings → General). For a Singapore (`ap-southeast-1`) project, choose Singapore (`sin1`) — every page makes several database calls, so this matters most for speed.
+4. Add the Vercel URL to Supabase Auth redirect URLs (see above).
+
+**When to reconsider:** Vercel's Hobby plan is for non-commercial use. Once Keh charges customers, either upgrade to Vercel Pro (~$20 per team member per month) or move to **Railway or Render** (~$5–7/month for a small always-on Node server). The app is portable — `npm run build && npm run start` — so switching later is an afternoon's work, not a rewrite.
+
+### All the options
 
 | Option | Good | Watch out for |
 |---|---|---|
-| **Vercel** | Made by the Next.js team; zero config, preview deploys per PR | Serverless functions accept ~4.5 MB request bodies, below our 5 MB uploads — lower `MAX_UPLOAD_BYTES` or upload photos straight to Supabase Storage from the browser. The Hobby plan is for non-commercial use. |
+| **Vercel** (recommended) | Made by the Next.js team; zero config, preview deploys per PR, free to start | ~4.5 MB request bodies (fine now that photos are resized in the browser). The Hobby plan is for non-commercial use. |
 | **Netlify** | Similar to Vercel, supports Next.js | Also has serverless body/time limits; check the current Next.js support for Next 16 |
 | **Render / Railway / Fly.io** | Runs `npm run build && npm run start` as a normal Node server — no body-size surprises, predictable pricing | A small always-on instance costs a few dollars a month; slower cold starts on free tiers |
 | **Own VPS** (e.g. DigitalOcean) | Full control, cheapest at scale | We maintain the server, HTTPS and updates |
