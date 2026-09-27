@@ -222,6 +222,19 @@ export type AiRecommendationRow = {
   action_goal: DbCampaignGoal | null;
   dismissed_at: string | null;
   created_at: string;
+  // Added in migration 012
+  product_id: string | null;
+  details: RecommendationDetails;
+  generated_by: "ai" | "guided";
+};
+
+/** ai_recommendations.details (jsonb) */
+export type RecommendationDetails = {
+  platforms?: DbPlatform[];
+  weekday?: number;
+  time?: string;
+  promotion?: string;
+  chips?: string[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

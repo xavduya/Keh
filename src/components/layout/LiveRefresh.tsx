@@ -30,6 +30,7 @@ const BUSINESS_TABLES: { table: string; column: string }[] = [
   { table: "subscriptions", column: "business_id" },
   { table: "products", column: "business_id" },
   { table: "campaigns", column: "business_id" },
+  { table: "ai_recommendations", column: "business_id" },
 ];
 /** No business_id column — RLS already limits events to the owner's rows. */
 const OWNED_TABLES = ["social_posts", "post_metrics"];

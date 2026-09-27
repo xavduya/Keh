@@ -46,6 +46,7 @@ export function CampaignWizard(props: {
   business: WizardBusiness;
   initialProductId?: string;
   initialGoal?: CampaignGoal;
+  initialPromotion?: string;
 }) {
   return (
     <CampaignProvider {...props}>

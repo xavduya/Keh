@@ -94,12 +94,14 @@ export function CampaignProvider({
   business,
   initialProductId,
   initialGoal,
+  initialPromotion,
 }: {
   children: React.ReactNode;
   products: Product[];
   business: WizardBusiness;
   initialProductId?: string;
   initialGoal?: CampaignGoal;
+  initialPromotion?: string;
 }) {
   const firstProductId =
     products.find((p) => p.id === initialProductId)?.id ?? products[0]?.id ?? "";
@@ -107,7 +109,7 @@ export function CampaignProvider({
   const [draft, setDraftState] = useState<CampaignDraft>({
     goal: initialGoal ?? "PROMOTE_PRODUCT",
     productId: firstProductId,
-    promotion: "",
+    promotion: initialPromotion ?? "",
     duration: "",
     instructions: "",
     scheduledDate: "",

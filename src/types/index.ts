@@ -245,6 +245,14 @@ export interface AIRecommendation {
   actionLabel?: string;
   /** Suggested campaign goal if the user acts on this recommendation */
   actionGoal?: CampaignGoal;
+  /** The product this recommendation is about (pre-selected in the wizard). */
+  productId?: string;
+  /** Short strategy chips, e.g. "TikTok first", "Friday evening". */
+  chips: string[];
+  /** Offer to pre-fill, if the recommendation suggests one. */
+  promotion?: string;
+  /** Written by a language model ("ai") or the rules engine ("guided"). */
+  generatedBy: "ai" | "guided";
   createdAt: string;
 }
 
