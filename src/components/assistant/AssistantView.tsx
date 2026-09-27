@@ -14,11 +14,10 @@ import {
   MessageCircle,
   Send,
   Sparkles,
-  Tag,
-  Video,
   Wand2,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { RecommendationList } from "./RecommendationList";
 import { HintBox } from "@/components/ui/hint-box";
 import { stashPendingAiCampaign, useMarketingAssistant } from "@/hooks/useMarketingAssistant";
 import type { AIRecommendation, AssistantIntent, Business, MarketingCampaignAction, MarketingIdea } from "@/types";
@@ -51,8 +50,11 @@ export function AssistantView({
   learnings,
   business,
   productCount,
+  recommendationsStale,
 }: {
   recommendations: AIRecommendation[];
+  /** Missing or over a week old — the list generates new ones. */
+  recommendationsStale: boolean;
   learnings: string[];
   business: Business;
   productCount: number;
@@ -342,52 +344,13 @@ export function AssistantView({
             </dl>
           </div>
 
-          {recommendations.length > 0 && (
-            <div className="rounded-[12px] border border-[#e9e9ef] bg-white p-5">
-              <h2 className="font-heading text-[15px] font-[750] text-[#262535]">
-                Ideas to put into action
-              </h2>
-              <div className="mt-3 space-y-4">
-                {recommendations.map((recommendation, index) => (
-                  <article
-                    key={recommendation.id}
-                    className={index > 0 ? "border-t border-[#f0f0f4] pt-4" : ""}
-                  >
-                    <div className="mb-1.5 flex items-center gap-2">
-                      {index === 0 ? (
-                        <Sparkles size={14} className="text-[#5849da]" />
-                      ) : index === 1 ? (
-                        <Video size={14} className="text-[#5849da]" />
-                      ) : (
-                        <Tag size={14} className="text-[#5849da]" />
-                      )}
-                      <span className="text-[11px] font-[700] text-[#5849da]">
-                        {index === 0 ? "Recommended next step" : "Marketing idea"}
-                      </span>
-                    </div>
-                    <h3 className="text-[13px] font-[700] leading-snug text-[#262535]">
-                      {recommendation.title}
-                    </h3>
-                    <p className="mt-1.5 text-[12px] leading-relaxed text-[#7b7b8b]">
-                      {recommendation.explanation}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        ask(`Turn this idea into a campaign: ${recommendation.title}. ${recommendation.explanation}`, {
-                          intent: "fill",
-                        })
-                      }
-                      className="mt-2 inline-flex items-center gap-1 text-[12px] font-[600] text-[#5849da] hover:underline"
-                    >
-                      Fill campaign from this idea
-                      <ArrowRight size={13} />
-                    </button>
-                  </article>
-                ))}
-              </div>
-            </div>
-          )}
+          <RecommendationList
+            recommendations={recommendations}
+            stale={recommendationsStale}
+            onLetKehFill={(rec) =>
+              ask(`Turn this idea into a campaign: ${rec.title}. ${rec.explanation}`, { intent: "fill" })
+            }
+          />
 
           {learnings.length > 0 && (
             <div className="rounded-[12px] border border-[#e9e9ef] bg-white p-5">

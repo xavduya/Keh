@@ -1,4 +1,4 @@
-import { getRecommendations } from "@/services/recommendation.service";
+import { getRecommendations, recommendationsAreStale } from "@/services/recommendation.service";
 import { getAudienceLearnings } from "@/services/analytics.service";
 import { getProducts } from "@/services/product.service";
 import { getCurrentContext } from "@/lib/auth/context";
@@ -18,6 +18,7 @@ export default async function AssistantPage() {
       learnings={learnings}
       business={business}
       productCount={products.length}
+      recommendationsStale={recommendationsAreStale(recommendations)}
     />
   );
 }

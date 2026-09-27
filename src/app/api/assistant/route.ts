@@ -2,17 +2,10 @@ import { NextResponse } from "next/server";
 import { generateMarketingAdvice } from "@/lib/ai/ai.service";
 import { createServerClient } from "@/lib/supabase/server";
 import { MarketingAssistantRequestSchema } from "@/lib/validation/schemas";
-import {
-  getBrandProfile,
-  getBusinessByOwnerId,
-} from "@/services/business.service";
-import { getProducts } from "@/services/product.service";
-import { getPosts } from "@/services/campaign.service";
-import { findings, insights, periodSummary, recommendedSlot } from "@/lib/analytics";
-import { todayKey } from "@/utils/datetime";
+import { getBusinessByOwnerId } from "@/services/business.service";
+import { buildMarketingContext } from "@/lib/ai/context";
+import { consumeAiRequest } from "@/lib/ai/rate-limit";
 
-/** Per signed-in user; every request counts (OpenAI or guided). */
-const AI_LIMITS = { perMinute: 8, perDay: 100 };
 const MAX_BODY_BYTES = 24_000;
 
 export async function POST(request: Request) {
@@ -74,8 +67,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const limited = await checkRateLimit(supabase);
-    if (limited) return limited;
+    const limit = await consumeAiRequest();
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: limit.message },
+        { status: 429, headers: { "Retry-After": String(limit.retryAfter) } }
+      );
+    }
 
     const business = await getBusinessByOwnerId(user.id);
     if (!business) {
@@ -85,60 +83,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const [products, brandProfile, posts] = await Promise.all([
-      getProducts(business.id),
-      getBrandProfile(business.id),
-      getPosts(business.id),
-    ]);
-    // The business's own results, so advice and timing are based on them.
-    const found = findings(posts);
-    const summary = periodSummary(posts, todayKey());
-    const advice = await generateMarketingAdvice(parsedRequest.data, {
-      business: {
-        name: business.name,
-        description: business.description,
-        industry: business.industry,
-        location: business.location,
-        targetAudience: business.targetAudience,
-        preferredLanguage: business.preferredLanguage,
-        operatingHours: business.operatingHours,
-        delivery: business.delivery,
-        payment: business.payment,
-      },
-      brandProfile: brandProfile
-        ? {
-            tone: brandProfile.tone,
-            defaultCTA: brandProfile.defaultCTA,
-            brandGuidelines: brandProfile.brandGuidelines?.slice(0, 500),
-          }
-        : null,
-      products: products.slice(0, 12).map((product) => ({
-        id: product.id,
-        name: product.name,
-        description: product.description.slice(0, 500),
-        price: product.price,
-        promoPrice: product.promoPrice,
-        category: product.category,
-        availability: product.availability,
-        aiNotes: product.aiNotes?.slice(0, 300),
-      })),
-      performance:
-        found.measuredCount > 0
-          ? {
-              measuredPosts: found.measuredCount,
-              avgReach: found.avgReach,
-              reachGrowthPct: summary.reachGrowthPct,
-              bestProductName: found.bestProduct?.value.name,
-              bestPlatform: found.bestPlatform?.value,
-              insights: insights(found, summary),
-            }
-          : null,
-      slot: recommendedSlot(found),
-      recentCaptions: [...posts]
-        .sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt))
-        .slice(0, 5)
-        .map((post) => post.caption.slice(0, 280)),
-    });
+    const { context } = await buildMarketingContext(business);
+    const advice = await generateMarketingAdvice(parsedRequest.data, context);
 
     return NextResponse.json(advice);
   } catch (error) {
@@ -148,36 +94,4 @@ export async function POST(request: Request) {
       { status: 502 }
     );
   }
-}
-
-/**
- * Records this request against the user's AI limits (migration 009).
- * Returns a 429 response when over the limit, otherwise null.
- * Fails open if the limiter itself is unavailable (e.g. migration not yet
- * applied) so the assistant keeps working — the error is logged.
- */
-async function checkRateLimit(
-  supabase: Awaited<ReturnType<typeof createServerClient>>
-): Promise<NextResponse | null> {
-  const { data, error } = await supabase.rpc("consume_ai_request", {
-    per_minute: AI_LIMITS.perMinute,
-    per_day: AI_LIMITS.perDay,
-  });
-  if (error) {
-    console.error("AI rate limiter unavailable — is migration 009 applied?", error.message);
-    return null;
-  }
-
-  const result = data?.[0];
-  if (result?.allowed) return null;
-
-  const retryAfter = Math.max(1, result?.retry_after_seconds ?? 60);
-  const message =
-    retryAfter <= 60
-      ? `You're asking quickly — give Keh ${retryAfter} second${retryAfter === 1 ? "" : "s"} and try again.`
-      : `You've reached today's limit of ${AI_LIMITS.perDay} assistant requests. It resets within ${Math.ceil(retryAfter / 3600)} hours.`;
-  return NextResponse.json(
-    { error: message },
-    { status: 429, headers: { "Retry-After": String(retryAfter) } }
-  );
 }
