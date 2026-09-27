@@ -421,7 +421,9 @@ function determineCampaignControl(
     ) &&
       !/\b(fill|create|make|put into|apply)\b/.test(question));
 
-  if (!isActionIntent && isIdeasOnly) {
+  // Only touch the owner's campaign when they asked for it. Questions
+  // ("how are my posts doing?") get an answer, not a filled-in form.
+  if (!isActionIntent || isIdeasOnly) {
     return {
       explanation: "",
     };
@@ -682,7 +684,7 @@ function createGuidedMarketingResponse(
 
   // If user asked about analytics/metrics — answer from the business's results
   if (
-    /\b(analytics|performance|reach|engagement|results|views|clicks|followers|underperform|why did|measure|track)\b/.test(
+    /\b(analytics|performance|reach|engagement|results|views|clicks|followers|underperform|why did|measure|track|stats|insights|doing|working)\b|how (are|is) my/.test(
       normalizedQuestion
     )
   ) {
