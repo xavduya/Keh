@@ -53,7 +53,12 @@ export async function signup(
   }
 
   const { fullName, businessName, email, password } = parsed.data;
-  const origin = (await headers()).get("origin") ?? "";
+  // Where the confirmation link sends the user back to. Some browsers omit
+  // Origin on same-origin posts, so fall back to the Host header.
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
+  const proto = requestHeaders.get("x-forwarded-proto") ?? (host?.startsWith("localhost") ? "http" : "https");
+  const origin = requestHeaders.get("origin") ?? (host ? `${proto}://${host}` : "");
 
   const supabase = await createServerClient();
   const { data, error } = await supabase.auth.signUp({

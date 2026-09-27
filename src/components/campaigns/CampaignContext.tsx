@@ -9,6 +9,7 @@ import type {
   Product,
 } from "@/types";
 import { formatPrice } from "@/utils";
+import type { PostingSlot } from "@/lib/analytics";
 import {
   APPLY_AI_CAMPAIGN_EVENT,
   takePendingAiCampaign,
@@ -22,6 +23,8 @@ export interface WizardBusiness {
   toneLabel: string;
   languageLabel: string;
   ctaLabel: string;
+  /** Best time to post, from the business's results (or the Friday-evening default). */
+  postingSlot: PostingSlot;
 }
 
 interface CampaignContextValue {

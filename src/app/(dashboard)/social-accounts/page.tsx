@@ -2,6 +2,7 @@ import { getSocialAccounts } from "@/services/social-account.service";
 import { SocialAccountsManager } from "@/components/social-accounts/SocialAccountsManager";
 import { getCurrentContext } from "@/lib/auth/context";
 import { isMetaConfigured } from "@/lib/env";
+import { connectErrorMessage } from "@/lib/social/connect-errors";
 
 export default async function SocialAccountsPage({
   searchParams,
@@ -18,7 +19,7 @@ export default async function SocialAccountsPage({
     <SocialAccountsManager
       accounts={accounts}
       metaConfigured={isMetaConfigured()}
-      error={error?.slice(0, 300)}
+      error={connectErrorMessage(error)}
       justConnected={connected === "1"}
     />
   );

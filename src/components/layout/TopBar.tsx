@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Menu, Sparkles } from "lucide-react";
+import { Menu, Sparkles } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { NAV_ITEMS, BOTTOM_NAV_ITEMS } from "@/constants";
 import { openAiCopilot } from "@/hooks/useMarketingAssistant";
@@ -47,27 +47,17 @@ export function TopBar({ onMenuClick, userInitials }: TopBarProps) {
         </span>
       </div>
 
-      {/* Right: demo badge + Ask AI button + bell + avatar */}
+      {/* Right: Ask AI button + avatar */}
       <div className="flex items-center gap-3">
         <button
           type="button"
           onClick={() => openAiCopilot()}
-          className="inline-flex items-center gap-1.5 rounded-full border border-[#d8d2fb] bg-[#f0edff]/70 px-3 py-1.5 text-[12px] font-[600] text-[#5849da] transition-all hover:bg-[#5849da] hover:text-white"
+          className="group inline-flex items-center gap-1.5 rounded-full border border-[#d8d2fb] bg-[#f0edff]/70 px-3 py-1.5 text-[12px] font-[600] text-[#5849da] transition-all hover:bg-[#5849da] hover:text-white"
         >
           <Sparkles size={13} className="text-[#5849da] group-hover:text-white" />
           <span>Ask Keh AI</span>
         </button>
 
-        <span className="hidden lg:block text-[13px] text-[#7b7b8b]">
-          handle your marketing here, Keh!
-        </span>
-        <div className="w-px h-4 bg-[#e9e9ef] hidden sm:block" />
-        <button
-          className="p-1.5 rounded-lg text-[#7b7b8b] hover:bg-[#f7f8fb] transition-colors"
-          aria-label="Notifications"
-        >
-          <Bell size={18} />
-        </button>
         <span className="w-[30px] h-[30px] rounded-full bg-[#f0edff] text-[#5849da] text-[11px] font-[700] flex items-center justify-center">
           {userInitials}
         </span>

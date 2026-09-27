@@ -354,7 +354,7 @@ export function AssistantView({
 
           {learnings.length > 0 && (
             <div className="rounded-[12px] border border-[#e9e9ef] bg-white p-5">
-              <h2 className="font-heading text-[15px] font-[750] text-[#262535]">Audience notes</h2>
+              <h2 className="font-heading text-[15px] font-[750] text-[#262535]">What your results show</h2>
               <ul className="mt-3 space-y-2.5">
                 {learnings.slice(0, 3).map((learning) => (
                   <li
@@ -367,7 +367,7 @@ export function AssistantView({
                 ))}
               </ul>
               <HintBox>
-                Treat these as starting points. Validate them against your own account results.
+                Based on your published posts. Keh uses these when it plans your next campaign.
               </HintBox>
             </div>
           )}

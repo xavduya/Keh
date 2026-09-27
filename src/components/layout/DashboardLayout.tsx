@@ -53,7 +53,7 @@ export function DashboardLayout({
         <footer className="px-6 py-3 text-center text-[12px] text-[#b0b0be] border-t border-[#e9e9ef] bg-white">
           Made for your business. Built around you.{" "}
           <span className="ml-2">
-            Prototype · Sample data · Asia/Manila
+            All times in Asia/Manila
           </span>
         </footer>
       </div>

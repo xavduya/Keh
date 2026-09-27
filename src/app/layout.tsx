@@ -3,7 +3,7 @@ import { DM_Sans, Manrope } from "next/font/google";
 import "./globals.css";
 
 /**
- * Body font — DM Sans (matches prototype)
+ * Body font — DM Sans (from the original design)
  * Loaded via next/font for self-hosting + performance.
  */
 const dmSans = DM_Sans({
@@ -14,7 +14,7 @@ const dmSans = DM_Sans({
 });
 
 /**
- * Heading font — Manrope (matches prototype)
+ * Heading font — Manrope (from the original design)
  */
 const manrope = Manrope({
   variable: "--font-manrope",

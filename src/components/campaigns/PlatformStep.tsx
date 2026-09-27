@@ -82,7 +82,8 @@ export function PlatformStep() {
 
       <HintBox>
         TikTok: everything will be prepared for you. Add your preferred audio and publish
-        manually when it&apos;s time. All publishing is simulated in this prototype.
+        manually when it&apos;s time. Keh doesn&apos;t post to Facebook or Instagram for you yet —
+        your posts are saved to the calendar.
       </HintBox>
 
       {draft.platforms.length === 0 && (

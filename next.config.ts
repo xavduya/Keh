@@ -3,9 +3,10 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
-      // Product photos are uploaded through a Server Action (limit 5 MB, see
-      // MAX_UPLOAD_BYTES). The default 1 MB body limit is too small.
-      bodySizeLimit: "6mb",
+      // Images are uploaded through Server Actions (5 MB each, see
+      // MAX_UPLOAD_BYTES); the brand form can send a logo and a brand image
+      // together. The default 1 MB body limit is too small.
+      bodySizeLimit: "11mb",
     },
   },
   images: {
@@ -16,8 +17,7 @@ const nextConfig: NextConfig = {
         hostname: "*.supabase.co",
         pathname: "/storage/v1/object/public/**",
       },
-      // Unsplash CDN — used by the current mock product images
-      // Remove once product images are stored in Supabase Storage
+      // Unsplash CDN — product images in supabase/seed.sql (dev seed only)
       {
         protocol: "https",
         hostname: "images.unsplash.com",
