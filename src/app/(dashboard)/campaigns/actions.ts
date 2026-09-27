@@ -1,0 +1,88 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { getCurrentContext } from "@/lib/auth/context";
+import { CampaignDraftSchema } from "@/lib/validation/schemas";
+import { createCampaignWithPosts } from "@/services/campaign.service";
+import { getProductById } from "@/services/product.service";
+import { goalLabel } from "@/constants";
+import { manilaToUtcIso } from "@/utils/datetime";
+import type { CampaignDraft, PostStatus } from "@/types";
+
+/**
+ * schedule — posts go out at the chosen date/time
+ * publish  — posts are queued for right now (no live publishing yet)
+ * draft    — saved for later, nothing is scheduled
+ */
+export type SaveIntent = "schedule" | "publish" | "draft";
+
+export async function saveCampaign(
+  draft: CampaignDraft,
+  intent: SaveIntent
+): Promise<{ error: string }> {
+  const { business } = await getCurrentContext();
+
+  const parsed = CampaignDraftSchema.safeParse(draft);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Please check your campaign." };
+  }
+  const data = parsed.data;
+  const platforms = [...new Set(data.platforms)];
+
+  const product = await getProductById(data.productId);
+  if (!product || product.businessId !== business.id) {
+    return { error: "That product no longer exists. Pick another one." };
+  }
+
+  const missingCaption = platforms.find((p) => !data.captions[p]);
+  if (missingCaption) {
+    return { error: "Every selected platform needs a caption." };
+  }
+
+  let scheduledAt: string;
+  if (intent === "schedule") {
+    if (!data.scheduledDate || !data.scheduledTime) {
+      return { error: "Choose a date and time to schedule your campaign." };
+    }
+    scheduledAt = manilaToUtcIso(data.scheduledDate, data.scheduledTime);
+    if (new Date(scheduledAt) <= new Date()) {
+      return { error: "That time has already passed. Choose a time in the future." };
+    }
+  } else if (intent === "draft" && data.scheduledDate && data.scheduledTime) {
+    scheduledAt = manilaToUtcIso(data.scheduledDate, data.scheduledTime);
+  } else {
+    scheduledAt = new Date().toISOString();
+  }
+
+  const statusFor = (platform: string): PostStatus => {
+    if (intent === "draft") return "DRAFT";
+    // TikTok can't be auto-published: the owner adds audio and posts manually.
+    return platform === "TIKTOK" ? "ACTION_REQUIRED" : "SCHEDULED";
+  };
+
+  try {
+    await createCampaignWithPosts(business.id, {
+      goal: data.goal,
+      product,
+      promotion: data.promotion,
+      duration: data.duration,
+      instructions: data.instructions,
+      title: `${product.name} · ${goalLabel(data.goal)}`,
+      scheduledAt,
+      posts: platforms.map((platform) => ({
+        platform,
+        caption: data.captions[platform]!,
+        status: statusFor(platform),
+      })),
+    });
+  } catch (err) {
+    console.error("saveCampaign failed", err);
+    return { error: "We couldn't save your campaign. Please try again." };
+  }
+
+  for (const path of ["/campaigns", "/calendar", "/content", "/dashboard", "/products"]) {
+    revalidatePath(path);
+  }
+  redirect("/campaigns");
+}
