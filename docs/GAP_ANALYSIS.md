@@ -42,7 +42,7 @@ The core loop now works end to end on Supabase: **sign up → add a product → 
 | G12 Products | ✅ Fixed | Add/edit with photo upload (Storage), availability badge, empty state. No delete yet. |
 | Brand profile | ✅ Fixed | Business details, audience and brand voice save to Supabase (with logo and brand image upload); the wizard's captions use them. |
 | Home & Analytics | ✅ Fixed | Real 30-day stats, weekly reach, best product/platform/time, template insights and a data-driven recommendation, all from posts + `post_metrics`. `npm run seed:demo` generates demo history until real metrics are collected. |
-| AI marketing manager | 🟡 Working | Assistant page, floating and in-wizard copilots can brainstorm ideas and fill/caption/schedule campaigns (OpenAI or guided mode), with a change log and undo. Missing: AI usage limits, rate limiting. |
+| AI marketing manager | 🟡 Working | Assistant page, floating and in-wizard copilots can brainstorm ideas and fill/caption/schedule campaigns (OpenAI or guided mode), with a change log and undo. Rate limited per user (migration 009). Missing: counting AI use against the plan's monthly AI campaigns. |
 | G13 Supabase setup | 🟡 Partly | Seed moved out of `migrations/`; migrations 001–005 and 007 applied. Still no `supabase/config.toml` or generated types. |
 | G14 DB security | 🟡 Partly | (a) `search_path` pinned, (b) cross-business product checks, (c) OAuth token columns hidden from users — all in migration 007. (d) RLS performance not done. |
 | G16 Empty states / errors | 🟡 Partly | Real-data pages handle "no products / no posts". No `error.tsx` / `loading.tsx` yet; mock pages still crash-prone. |

@@ -334,6 +334,10 @@ export type Database = {
         Args: Record<string, never>;
         Returns: string[];
       };
+      consume_ai_request: {
+        Args: { per_minute: number; per_day: number };
+        Returns: { allowed: boolean; retry_after_seconds: number }[];
+      };
     };
     CompositeTypes: Record<never, never>;
   };

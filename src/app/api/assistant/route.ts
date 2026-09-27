@@ -11,9 +11,14 @@ import { getPosts } from "@/services/campaign.service";
 import { findings, insights, periodSummary, recommendedSlot } from "@/lib/analytics";
 import { todayKey } from "@/utils/datetime";
 
+/** Per signed-in user; every request counts (OpenAI or guided). */
+const AI_LIMITS = { perMinute: 8, perDay: 100 };
+const MAX_BODY_BYTES = 24_000;
+
 export async function POST(request: Request) {
-  const contentLength = Number(request.headers.get("content-length") ?? 0);
-  if (contentLength > 24_000) {
+  // Measure the body itself — a Content-Length header can be omitted.
+  const raw = await request.text();
+  if (raw.length > MAX_BODY_BYTES) {
     return NextResponse.json(
       { error: "That request is too large. Shorten your message and try again." },
       { status: 413 }
@@ -22,7 +27,7 @@ export async function POST(request: Request) {
 
   let body: unknown;
   try {
-    body = await request.json();
+    body = JSON.parse(raw);
   } catch {
     return NextResponse.json(
       { error: "Send a valid JSON request." },
@@ -68,6 +73,9 @@ export async function POST(request: Request) {
         { status: 401 }
       );
     }
+
+    const limited = await checkRateLimit(supabase);
+    if (limited) return limited;
 
     const business = await getBusinessByOwnerId(user.id);
     if (!business) {
@@ -136,4 +144,36 @@ export async function POST(request: Request) {
       { status: 502 }
     );
   }
+}
+
+/**
+ * Records this request against the user's AI limits (migration 009).
+ * Returns a 429 response when over the limit, otherwise null.
+ * Fails open if the limiter itself is unavailable (e.g. migration not yet
+ * applied) so the assistant keeps working — the error is logged.
+ */
+async function checkRateLimit(
+  supabase: Awaited<ReturnType<typeof createServerClient>>
+): Promise<NextResponse | null> {
+  const { data, error } = await supabase.rpc("consume_ai_request", {
+    per_minute: AI_LIMITS.perMinute,
+    per_day: AI_LIMITS.perDay,
+  });
+  if (error) {
+    console.error("AI rate limiter unavailable — is migration 009 applied?", error.message);
+    return null;
+  }
+
+  const result = data?.[0];
+  if (result?.allowed) return null;
+
+  const retryAfter = Math.max(1, result?.retry_after_seconds ?? 60);
+  const message =
+    retryAfter <= 60
+      ? `You're asking quickly — give Keh ${retryAfter} second${retryAfter === 1 ? "" : "s"} and try again.`
+      : `You've reached today's limit of ${AI_LIMITS.perDay} assistant requests. It resets within ${Math.ceil(retryAfter / 3600)} hours.`;
+  return NextResponse.json(
+    { error: message },
+    { status: 429, headers: { "Retry-After": String(retryAfter) } }
+  );
 }
