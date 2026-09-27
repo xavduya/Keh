@@ -35,11 +35,12 @@ The core loop now works end to end on Supabase: **sign up → add a product → 
 | G5 Mobile drawer | ✅ Fixed | Closes on navigation and on Escape. |
 | G6 Saving campaigns | ✅ Fixed | `saveCampaign` Server Action + `createCampaignWithPosts`; Schedule / Publish now / Save draft all save. No live publishing yet (see G24). |
 | G7 Wizard correctness | 🟡 Mostly | Captions use the real business, brand tone/language/CTA and product, and regenerate when inputs change. Still template text, not AI. |
-| G8 Validation | 🟡 Mostly | Product, campaign and auth forms are validated server-side with Zod. The brand form isn't wired yet. |
+| G8 Validation | ✅ Fixed | Product, campaign, brand and auth forms are validated server-side with Zod; the brand form's field names now match the schema and database. |
 | G9 Server pages | 🟡 Mostly | Dashboard, campaigns, wizard, calendar, content and products are server pages feeding client views. Analytics, assistant, brand, social accounts and subscription are still mock client pages. |
 | G10 Demo identity | 🟡 Mostly | Real user and business everywhere in the shell and wizard. The dashboard's recommendation card and stat cards are still mock ("Matcha Latte"). |
 | G11 Auth | ✅ Fixed | Email/password login, sign-up (with business name), sign-out, and the email-confirmation callback. No onboarding flow beyond sign-up. |
-| G12 Products | ✅ Fixed | Add/edit with photo upload (Storage), availability badge, empty state. **Migration 008 must be applied for photo uploads.** No delete yet. |
+| G12 Products | ✅ Fixed | Add/edit with photo upload (Storage), availability badge, empty state. No delete yet. |
+| Brand profile | ✅ Fixed | Business details, audience and brand voice save to Supabase (with logo and brand image upload); the wizard's captions use them. |
 | G13 Supabase setup | 🟡 Partly | Seed moved out of `migrations/`; migrations 001–005 and 007 applied. Still no `supabase/config.toml` or generated types. |
 | G14 DB security | 🟡 Partly | (a) `search_path` pinned, (b) cross-business product checks, (c) OAuth token columns hidden from users — all in migration 007. (d) RLS performance not done. |
 | G16 Empty states / errors | 🟡 Partly | Real-data pages handle "no products / no posts". No `error.tsx` / `loading.tsx` yet; mock pages still crash-prone. |

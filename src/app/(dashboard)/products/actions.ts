@@ -4,13 +4,8 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getCurrentContext } from "@/lib/auth/context";
 import { ProductFormSchema } from "@/lib/validation/schemas";
-import {
-  createProduct,
-  getProductById,
-  updateProduct,
-  uploadProductImage,
-} from "@/services/product.service";
-import { MAX_UPLOAD_BYTES } from "@/constants";
+import { createProduct, getProductById, updateProduct } from "@/services/product.service";
+import { submittedFile, uploadBusinessImage, validateImage } from "@/services/storage.service";
 
 export type ProductFormState =
   | {
@@ -19,8 +14,6 @@ export type ProductFormState =
       fieldErrors?: Record<string, string[] | undefined>;
     }
   | undefined;
-
-const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
 /** Creates a product, or updates it when the form includes an `id`. */
 export async function saveProduct(
@@ -34,15 +27,10 @@ export async function saveProduct(
     return { fieldErrors: z.flattenError(parsed.error).fieldErrors };
   }
 
-  const image = formData.get("image");
-  const hasImage = image instanceof File && image.size > 0;
-  if (hasImage) {
-    if (!ALLOWED_IMAGE_TYPES.includes(image.type)) {
-      return { fieldErrors: { image: ["Use a JPG, PNG, WebP or GIF image."] } };
-    }
-    if (image.size > MAX_UPLOAD_BYTES) {
-      return { fieldErrors: { image: ["Images must be 5 MB or smaller."] } };
-    }
+  const image = submittedFile(formData.get("image"));
+  const imageError = image && validateImage(image);
+  if (imageError) {
+    return { fieldErrors: { image: [imageError] } };
   }
 
   const id = formData.get("id");
@@ -56,9 +44,7 @@ export async function saveProduct(
       }
     }
 
-    const imageUrl = hasImage
-      ? await uploadProductImage(business.id, image)
-      : undefined;
+    const imageUrl = image ? await uploadBusinessImage(business.id, image) : undefined;
 
     if (typeof id === "string" && id) {
       await updateProduct(id, parsed.data, imageUrl);
