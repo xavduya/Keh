@@ -45,6 +45,36 @@ export function CalendarView({ posts, today }: { posts: EnrichedPost[]; today: s
     year: "numeric",
   });
 
+  // Month summary for the header (from PR #6), on real posts in Manila time.
+  const monthPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const monthPosts = posts.filter((post) => {
+    const isInMonth = manilaDateKey(post.scheduledAt).startsWith(monthPrefix);
+    const matchesPlatform =
+      filter === "All" || post.platforms.includes(PLATFORM_MAP[filter]);
+    return isInMonth && matchesPlatform;
+  });
+  const scheduledCount = monthPosts.filter(
+    (post) => post.status === "SCHEDULED" || post.status === "PUBLISHING"
+  ).length;
+  const publishedCount = monthPosts.filter(
+    (post) => post.status === "PUBLISHED"
+  ).length;
+  const draftCount = monthPosts.filter((post) => post.status === "DRAFT").length;
+  const attentionCount = monthPosts.filter(
+    (post) => post.status === "ACTION_REQUIRED" || post.status === "FAILED"
+  ).length;
+  const postNoun = monthPosts.length === 1 ? "post" : "posts";
+  const platformDescription = filter === "All" ? "across all platforms" : `on ${filter}`;
+  const calendarSummary = [
+    `${monthPosts.length} ${postNoun} ${platformDescription}`,
+    `${scheduledCount} scheduled`,
+    `${publishedCount} published`,
+    `${draftCount} ${draftCount === 1 ? "draft" : "drafts"}`,
+    ...(attentionCount > 0
+      ? [`${attentionCount} ${attentionCount === 1 ? "needs" : "need"} attention`]
+      : []),
+  ].join(" · ");
+
   function prevMonth() {
     if (month === 0) { setMonth(11); setYear((y) => y - 1); }
     else setMonth((m) => m - 1);
@@ -69,7 +99,7 @@ export function CalendarView({ posts, today }: { posts: EnrichedPost[]; today: s
     <div className="space-y-5">
       <PageHeader
         title="Your content calendar"
-        subtitle="A little consistency goes a long way."
+        subtitle={`${monthLabel}: ${calendarSummary}.`}
         action={
           <Link
             href="/campaigns/new"
