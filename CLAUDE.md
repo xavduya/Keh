@@ -27,7 +27,7 @@ There is no test suite and no CI yet. Verify changes with `npm run build` + `npm
 - **Tailwind CSS v4** (CSS-first config in `src/app/globals.css`, no tailwind.config) + **shadcn/ui** (`base-nova` style, built on `@base-ui/react`, not Radix; `cn` comes from shadcn's `cn` package). Add primitives with `npx shadcn add <name>`.
 - **Zod 4**, **Recharts 3**, **lucide-react**.
 - **Supabase** (`@supabase/ssr`, `@supabase/supabase-js`) — Auth, Postgres (RLS) and Storage. `@supabase/server` is installed but unused.
-- **AI models** — `lib/ai/providers.ts` calls **Gemini** (`GEMINI_API_KEY`, `GEMINI_MODEL`, default `gemini-3.8-flash`, free tier, `generateContent` REST) or else **OpenAI** (`OPENAI_API_KEY`), both with plain `fetch`, JSON output. Without a key — or on any model failure — the assistant runs a rules-based **guided** mode. Response `mode` is `"ai"` or `"guided"`. Gemini free-tier prompts may be used by Google; don't send sensitive data.
+- **AI models** — `lib/ai/providers.ts` calls **Gemini** (`GEMINI_API_KEY`, `GEMINI_MODEL`, default `gemini-3.8-flash`, free tier, `generateContent` REST; one retry on 5xx, then `GEMINI_FALLBACK_MODELS` — default `gemini-3.7-flash,gemini-3.6-flash` — on overload/quota/retired model, all within a 30 s budget) or else **OpenAI** (`OPENAI_API_KEY`), both with plain `fetch`, JSON output. Without a key — or on any model failure — the assistant runs a rules-based **guided** mode. Response `mode` is `"ai"` or `"guided"`. Gemini free-tier prompts may be used by Google; don't send sensitive data.
 
 ## Architecture
 
