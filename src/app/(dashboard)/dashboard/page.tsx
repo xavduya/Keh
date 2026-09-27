@@ -12,6 +12,7 @@ import { getAnalyticsSummary, getInsights } from "@/services/analytics.service";
 import { getPosts } from "@/services/campaign.service";
 import { getConnectedAccounts } from "@/services/social-account.service";
 import { timeLabel } from "@/utils";
+import { getCurrentContext } from "@/lib/auth/context";
 import type { EnrichedPost } from "@/types";
 
 const DEMO_DATE = "2026-09-26";
@@ -55,16 +56,15 @@ function PostRow({ post }: { post: EnrichedPost }) {
   );
 }
 
-// Demo business ID — will come from Supabase session in Phase 5
-const DEMO_BUSINESS_ID = "biz_001";
-
 export default async function DashboardPage() {
+  const { user, business } = await getCurrentContext();
   const [summary, posts, insights, connectedAccounts] = await Promise.all([
-    getAnalyticsSummary(DEMO_BUSINESS_ID),
-    getPosts(DEMO_BUSINESS_ID),
-    getInsights(DEMO_BUSINESS_ID),
-    getConnectedAccounts(DEMO_BUSINESS_ID),
+    getAnalyticsSummary(business.id),
+    getPosts(business.id),
+    getInsights(business.id),
+    getConnectedAccounts(business.id),
   ]);
+  const firstName = user.fullName.split(" ")[0];
 
   const { today, tomorrow } = groupPostsByDate(posts);
   const actionRequired = posts.find((p) => p.status === "ACTION_REQUIRED");
@@ -83,7 +83,7 @@ export default async function DashboardPage() {
       <PageHeader
         title={
           <>
-            Good afternoon, Juan{" "}
+            Good afternoon, {firstName}{" "}
             <span style={{ fontSize: 25 }}>👋</span>
           </>
         }
@@ -140,16 +140,18 @@ export default async function DashboardPage() {
                   Create Recommended Campaign
                 </Link>
               </div>
-              <div className="hidden sm:block relative w-[140px] h-[160px] rounded-[10px] overflow-hidden shrink-0">
-                <Image
-                  src={posts[0]?.product.imageUrl ?? ""}
-                  alt="Matcha Latte"
-                  fill
-                  className="object-cover"
-                  sizes="140px"
-                  unoptimized
-                />
-              </div>
+              {posts[0]?.product.imageUrl && (
+                <div className="hidden sm:block relative w-[140px] h-[160px] rounded-[10px] overflow-hidden shrink-0">
+                  <Image
+                    src={posts[0].product.imageUrl}
+                    alt={posts[0].product.name}
+                    fill
+                    className="object-cover"
+                    sizes="140px"
+                    unoptimized
+                  />
+                </div>
+              )}
             </div>
           </div>
           <div className="border-t border-[#e9e9ef] px-6 py-3 flex items-center justify-between">

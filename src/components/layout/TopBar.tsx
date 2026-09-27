@@ -23,9 +23,10 @@ function getPageTitle(pathname: string): string {
 
 interface TopBarProps {
   onMenuClick: () => void;
+  userInitials: string;
 }
 
-export function TopBar({ onMenuClick }: TopBarProps) {
+export function TopBar({ onMenuClick, userInitials }: TopBarProps) {
   const pathname = usePathname();
   const pageTitle = getPageTitle(pathname);
 
@@ -58,7 +59,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
           <Bell size={18} />
         </button>
         <span className="w-[30px] h-[30px] rounded-full bg-[#f0edff] text-[#5849da] text-[11px] font-[700] flex items-center justify-center">
-          JD
+          {userInitials}
         </span>
       </div>
     </header>
