@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -20,6 +20,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PostStatusBadge } from "@/components/ui/post-status-badge";
 import { SocialPlatformBadge } from "@/components/ui/social-platform-badge";
 import type { EnrichedCampaign, PostStatus } from "@/types";
+import { isCampaignEditable } from "@/utils";
+import { removeCampaign } from "./actions";
 
 const FILTERS = ["All", "Drafts", "Scheduled", "Published", "Needs attention"];
 
@@ -62,7 +64,43 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function DeleteCampaignButton({ campaignId, published }: { campaignId: string; published: boolean }) {
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function handleDelete() {
+    const warning = published
+      ? "Delete this campaign from Keh? Posts already on Facebook or Instagram will stay there."
+      : "Delete this campaign? This can't be undone.";
+    if (!window.confirm(warning)) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await removeCampaign(campaignId);
+      if (result.error) setError(result.error);
+    });
+  }
+
+  return (
+    <span className="inline-flex items-center gap-2">
+      {error && (
+        <span role="alert" className="text-[12px] text-destructive">
+          {error}
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={handleDelete}
+        disabled={pending}
+        className="text-[13px] font-[500] text-[#b54b4b] hover:underline disabled:opacity-50"
+      >
+        {pending ? "Deleting…" : "Delete"}
+      </button>
+    </span>
+  );
+}
+
 function CampaignCard({ campaign }: { campaign: EnrichedCampaign }) {
+  const editable = isCampaignEditable(campaign.posts);
   const title = campaign.posts[0]?.title ?? "Untitled campaign";
   const goal =
     CAMPAIGN_GOALS.find((item) => item.value === campaign.goal)?.label ??
@@ -102,6 +140,15 @@ function CampaignCard({ campaign }: { campaign: EnrichedCampaign }) {
             {campaign.duration && <span>{campaign.duration}</span>}
           </div>
 
+          {campaign.posts
+            .filter((post) => post.status === "FAILED" && post.lastError)
+            .map((post) => (
+              <p key={post.id} role="alert" className="text-[13px] text-destructive bg-destructive/10 rounded-lg px-3 py-2">
+                <span className="font-semibold">{post.platform.charAt(0) + post.platform.slice(1).toLowerCase()}:</span>{" "}
+                {post.lastError}
+              </p>
+            ))}
+
           <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-[#f0f0f4] pt-3">
             <div className="flex flex-wrap items-center gap-3 text-[12px] text-[#7b7b8b]">
               <span>
@@ -115,13 +162,26 @@ function CampaignCard({ campaign }: { campaign: EnrichedCampaign }) {
                 ))}
               </div>
             </div>
-            <Link
-              href="/content"
-              className="inline-flex items-center gap-1 text-[13px] font-[600] text-[#5849da] hover:underline"
-            >
-              View content
-              <ArrowRight size={14} />
-            </Link>
+            <div className="flex items-center gap-4">
+              <DeleteCampaignButton campaignId={campaign.id} published={!editable} />
+              {editable ? (
+                <Link
+                  href={`/campaigns/${campaign.id}/edit`}
+                  className="inline-flex items-center gap-1 text-[13px] font-[600] text-[#5849da] hover:underline"
+                >
+                  Edit or reschedule
+                  <ArrowRight size={14} />
+                </Link>
+              ) : (
+                <Link
+                  href="/content"
+                  className="inline-flex items-center gap-1 text-[13px] font-[600] text-[#5849da] hover:underline"
+                >
+                  View content
+                  <ArrowRight size={14} />
+                </Link>
+              )}
+            </div>
           </div>
         </div>
       </div>

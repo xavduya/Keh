@@ -23,6 +23,7 @@ import type {
 } from "@/lib/supabase/database.types";
 import { createServerClient } from "@/lib/supabase/server";
 import { getProducts } from "./product.service";
+import { chunk } from "./batch";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Row → domain mappers
@@ -55,6 +56,7 @@ function toPost(row: SocialPostRow): SocialPost {
     publishedAt: row.published_at ?? undefined,
     status: row.status,
     externalPostId: row.external_post_id ?? undefined,
+    lastError: row.last_error ?? undefined,
   };
 }
 
@@ -77,14 +79,17 @@ export async function getCampaigns(businessId: string): Promise<Campaign[]> {
 async function getPostsForCampaigns(campaignIds: string[]): Promise<SocialPost[]> {
   if (campaignIds.length === 0) return [];
   const supabase = await createServerClient();
-  const { data, error } = await supabase
-    .from("social_posts")
-    .select("*")
-    .in("campaign_id", campaignIds)
-    .order("scheduled_at", { ascending: true });
-
-  if (error) throw error;
-  return data.map(toPost);
+  const batches = await Promise.all(
+    chunk(campaignIds).map(async (ids) => {
+      const { data, error } = await supabase.from("social_posts").select("*").in("campaign_id", ids);
+      if (error) throw error;
+      return data;
+    })
+  );
+  return batches
+    .flat()
+    .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
+    .map(toPost);
 }
 
 /** All campaigns with their product and posts, newest first. */
@@ -111,14 +116,20 @@ async function getLatestMetrics(postIds: string[]): Promise<Map<string, LatestMe
   if (postIds.length === 0) return latest;
 
   const supabase = await createServerClient();
-  const { data, error } = await supabase
-    .from("post_metrics")
-    .select("*")
-    .in("post_id", postIds)
-    .order("collected_at", { ascending: false });
-  if (error) throw error;
+  // Each post's rows land in a single batch, so "newest first" holds per post.
+  const batches = await Promise.all(
+    chunk(postIds).map(async (ids) => {
+      const { data, error } = await supabase
+        .from("post_metrics")
+        .select("*")
+        .in("post_id", ids)
+        .order("collected_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    })
+  );
 
-  for (const m of data) {
+  for (const m of batches.flat()) {
     if (latest.has(m.post_id)) continue; // rows are newest first
     latest.set(m.post_id, {
       reach: m.reach,
@@ -218,4 +229,133 @@ export async function createCampaignWithPosts(
   }
 
   return campaign.id;
+}
+
+/** One campaign with its product and posts, or null if it isn't this business's. */
+export async function getCampaignWithPosts(
+  businessId: string,
+  campaignId: string
+): Promise<EnrichedCampaign | null> {
+  const supabase = await createServerClient();
+  const { data, error } = await supabase
+    .from("campaigns")
+    .select("*")
+    .eq("id", campaignId)
+    .eq("business_id", businessId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+
+  const campaign = toCampaign(data);
+  const [posts, products] = await Promise.all([getPostsForCampaigns([campaign.id]), getProducts(businessId)]);
+  const product = products.find((p) => p.id === campaign.productId);
+  return product ? { ...campaign, product, posts } : null;
+}
+
+/**
+ * Updates a campaign and brings its posts in line with `input.posts`:
+ * existing platforms are updated in place, new ones inserted, dropped ones
+ * deleted. Deletes run first and updates last, so the derive_campaign_status
+ * trigger (which ignores deletes) recomputes the campaign's status.
+ */
+export async function updateCampaignWithPosts(
+  businessId: string,
+  campaignId: string,
+  input: NewCampaignInput
+): Promise<void> {
+  const supabase = await createServerClient();
+
+  const { error: campaignError } = await supabase
+    .from("campaigns")
+    .update({
+      product_id: input.product.id,
+      goal: input.goal,
+      promotion: input.promotion || null,
+      duration: input.duration || null,
+      instructions: input.instructions || null,
+    })
+    .eq("id", campaignId)
+    .eq("business_id", businessId);
+  if (campaignError) throw campaignError;
+
+  const existing = await getPostsForCampaigns([campaignId]);
+  const wanted = new Map(input.posts.map((p) => [p.platform, p]));
+
+  const removed = existing.filter((p) => !wanted.has(p.platform)).map((p) => p.id);
+  if (removed.length > 0) {
+    const { error } = await supabase.from("social_posts").delete().in("id", removed);
+    if (error) throw error;
+  }
+
+  const added = input.posts.filter((p) => !existing.some((e) => e.platform === p.platform));
+  if (added.length > 0) {
+    const { error } = await supabase.from("social_posts").insert(
+      added.map((post) => ({
+        campaign_id: campaignId,
+        product_id: input.product.id,
+        platform: post.platform,
+        title: input.title,
+        caption: post.caption,
+        media_url: input.product.imageUrl || null,
+        scheduled_at: input.scheduledAt,
+        published_at: null,
+        status: post.status,
+        external_post_id: null,
+      }))
+    );
+    if (error) throw error;
+  }
+
+  for (const post of existing.filter((p) => wanted.has(p.platform))) {
+    const next = wanted.get(post.platform)!;
+    const { error } = await supabase
+      .from("social_posts")
+      .update({
+        product_id: input.product.id,
+        title: input.title,
+        caption: next.caption,
+        media_url: input.product.imageUrl || null,
+        scheduled_at: input.scheduledAt,
+        status: next.status,
+      })
+      .eq("id", post.id);
+    if (error) throw error;
+  }
+}
+
+/** Deletes a campaign; its posts and their metrics cascade. */
+export async function deleteCampaign(businessId: string, campaignId: string): Promise<void> {
+  const supabase = await createServerClient();
+  const { error } = await supabase.from("campaigns").delete().eq("id", campaignId).eq("business_id", businessId);
+  if (error) throw error;
+}
+
+/** How many campaigns use a product (they block deleting it). */
+export async function countCampaignsForProduct(businessId: string, productId: string): Promise<number> {
+  const supabase = await createServerClient();
+  const { count, error } = await supabase
+    .from("campaigns")
+    .select("id", { count: "exact", head: true })
+    .eq("business_id", businessId)
+    .eq("product_id", productId);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/**
+ * Marks a TikTok post the owner posted themselves as published. Only
+ * ACTION_REQUIRED TikTok posts; RLS limits it to the owner's posts.
+ * Returns false when there was no such post.
+ */
+export async function markPostedManually(postId: string): Promise<boolean> {
+  const supabase = await createServerClient();
+  const { data, error } = await supabase
+    .from("social_posts")
+    .update({ status: "PUBLISHED", published_at: new Date().toISOString() })
+    .eq("id", postId)
+    .eq("platform", "TIKTOK")
+    .eq("status", "ACTION_REQUIRED")
+    .select("id");
+  if (error) throw error;
+  return data.length > 0;
 }

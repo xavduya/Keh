@@ -221,8 +221,8 @@ function buildPlatformCaptions(
         ? `Exciting update mula sa ${business.name}! ✨`
         : `Special announcement from ${business.name}! ✨`
       : isTaglish
-      ? `Craving something special today? Tara, treat yourself to our ${product.name}! ☕✨`
-      : `Looking for your next favorite treat? Discover our ${product.name}. ✨`;
+      ? `Tara na sa ${business.name}! Our ${product.name} is waiting for you. ✨`
+      : `Stop by ${business.name} for our ${product.name}. ✨`;
 
   const fbPriceLine = originalPrice
     ? `Available now for only ${price} (regular ${originalPrice})!`
@@ -231,7 +231,7 @@ function buildPlatformCaptions(
   const facebookCaption = [
     fbOpening,
     "",
-    product.description || `Freshly crafted with love just for you.`,
+    product.description,
     fbPriceLine,
     promoText,
     instructions ? `💡 ${instructions}` : "",
@@ -247,8 +247,8 @@ function buildPlatformCaptions(
 
   // Instagram: Visual hook, aesthetic spacing, emojis, clean line breaks, tags
   const igHook = isTaglish
-    ? `Your daily dose of happiness is served. 🌿✨`
-    : `The highlight of your week starts right here. ✨`;
+    ? `${product.name}, fresh from ${business.name}. ✨`
+    : `${product.name}, made at ${business.name}. ✨`;
 
   const instagramCaption = [
     igHook,
@@ -268,8 +268,8 @@ function buildPlatformCaptions(
 
   // TikTok: Short video plan + viral hook
   const tiktokCaption = [
-    `POV: You finally tried the famous ${product.name} at ${business.name} 😍`,
-    `${promotion ? `🔥 ${promotion}!` : ""} Treat yourself for ${price}!`,
+    `${product.name} at ${business.name} 👀`,
+    `${promotion ? `🔥 ${promotion}! ` : ""}Only ${price}.`,
     locationText,
     cta,
     `${brandTag} #TikTokFood #SupportLocalPH #MustTry`,
@@ -325,7 +325,7 @@ export function generateMarketingIdeas(
       suggestedPlatforms: ["FACEBOOK", "INSTAGRAM"],
       suggestedDate: nextFriday,
       suggestedTime: "18:00",
-      captionPreview: `Weekend countdown is on! Treat yourself to our ${p1.name} this Friday to Sunday. Tag someone who owes you a treat!`,
+      captionPreview: `Weekend plans? Our ${p1.name} is here Friday to Sunday. Tag who you're bringing!`,
     },
     {
       id: "idea-community-craft",

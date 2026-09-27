@@ -5,9 +5,9 @@ import { login } from "../actions";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; deleted?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, deleted } = await searchParams;
 
   return (
     <>
@@ -21,6 +21,20 @@ export default async function LoginPage({
           That confirmation link didn&apos;t work. Try logging in, or sign up again.
         </p>
       )}
+      {deleted === "1" && (
+        <p className="text-[13px] text-brand bg-brand-light rounded-lg px-3 py-2 mb-4">
+          Your account and all its data have been deleted.
+        </p>
+      )}
+      {error === "reset" && (
+        <p className="text-[13px] text-destructive bg-destructive/10 rounded-lg px-3 py-2 mb-4">
+          That reset link expired or was opened in a different browser.{" "}
+          <Link href="/forgot-password" className="font-semibold underline">
+            Send a new one
+          </Link>
+          .
+        </p>
+      )}
 
       <AuthForm
         action={login}
@@ -31,6 +45,12 @@ export default async function LoginPage({
           { name: "password", label: "Password", type: "password", autoComplete: "current-password" },
         ]}
       />
+
+      <p className="text-[13px] text-center mt-4">
+        <Link href="/forgot-password" className="text-brand font-semibold hover:underline">
+          Forgot your password?
+        </Link>
+      </p>
 
       <p className="text-[13px] text-brand-muted mt-6 text-center">
         New to Keh?{" "}

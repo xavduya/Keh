@@ -247,6 +247,29 @@ export async function consumeCampaignQuota(
 }
 
 /**
+ * Counts extra scheduled posts from editing a campaign (migration 014) —
+ * editing isn't a new campaign, so only the posts are counted.
+ */
+export async function consumeScheduledPostQuota(
+  businessId: string,
+  extraPosts: number
+): Promise<QuotaResult> {
+  if (extraPosts <= 0) return { allowed: true };
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc("consume_scheduled_posts", {
+    p_business_id: businessId,
+    p_count: extraPosts,
+  });
+  if (error) {
+    console.error("Scheduled-post check unavailable — is migration 014 applied?", error.message);
+    return { allowed: true, unavailable: true };
+  }
+  const result = data?.[0];
+  if (result?.allowed) return { allowed: true };
+  return { allowed: false, reason: (result?.reason ?? "no_subscription") as "scheduled_posts" };
+}
+
+/**
  * Gives back usage counted by consumeCampaignQuota when the campaign could
  * not be saved. Server-only: runs with the secret key, because owners must
  * not be able to lower their own counters.

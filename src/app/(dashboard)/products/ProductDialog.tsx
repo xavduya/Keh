@@ -1,10 +1,10 @@
 "use client";
 
-import { startTransition, useActionState, useEffect, useRef } from "react";
+import { startTransition, useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Product } from "@/types";
-import { saveProduct, type ProductFormState } from "./actions";
+import { removeProduct, saveProduct, type ProductFormState } from "./actions";
 import { PhotoPicker } from "./PhotoPicker";
 
 interface ProductDialogProps {
@@ -62,6 +62,18 @@ export function ProductDialog({ product, onClose }: ProductDialogProps) {
     startTransition(() => formAction(formData));
   }
   const errors = state?.fieldErrors ?? {};
+
+  const [deleting, startDelete] = useTransition();
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  function handleDelete() {
+    if (!product || !window.confirm(`Delete ${product.name}? This can't be undone.`)) return;
+    setDeleteError(null);
+    startDelete(async () => {
+      const result = await removeProduct(product.id);
+      if (result.error) setDeleteError(result.error);
+      else onClose();
+    });
+  }
 
   // Native <dialog> gives us focus trapping, Escape-to-close and a backdrop.
   useEffect(() => {
@@ -137,14 +149,24 @@ export function ProductDialog({ product, onClose }: ProductDialogProps) {
         </div>
 
         <div aria-live="polite">
-          {state?.error && (
+          {(state?.error || deleteError) && (
             <p className="text-[13px] text-destructive bg-destructive/10 rounded-lg px-3 py-2">
-              {state.error}
+              {deleteError ?? state?.error}
             </p>
           )}
         </div>
 
         <div className="flex justify-end gap-2 pt-2 border-t border-brand-line">
+          {product && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting || pending}
+              className="mr-auto px-3 py-2 rounded-lg text-[14px] font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50"
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}

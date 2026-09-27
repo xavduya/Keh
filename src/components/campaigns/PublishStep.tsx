@@ -125,14 +125,25 @@ export function PublishStep() {
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#e9e9ef] text-[13px] text-[#262535] bg-white"
           >
             <SocialPlatformBadge platform={p} size="sm" />
-            {PLATFORM_LABELS[p]} · {p === "TIKTOK" ? "Manual" : "Automatic"}
+            {PLATFORM_LABELS[p]} · {p === "TIKTOK" ? "Manual" : business.publishingEnabled ? "Automatic" : "Saved to calendar"}
           </span>
         ))}
       </div>
 
-      <p className="text-[13px] text-[#7b7b8b]">
-        Posts are saved to your calendar. Live publishing to social platforms isn&apos;t connected yet.
-      </p>
+      {business.publishingEnabled ? (
+        <p className="text-[13px] text-[#7b7b8b]">
+          Facebook and Instagram posts go out automatically at this time, as long as those accounts are
+          connected in{" "}
+          <Link href="/social-accounts" className="font-semibold text-[#5849da] hover:underline">
+            Social accounts
+          </Link>
+          . TikTok posts are prepared for you to post yourself.
+        </p>
+      ) : (
+        <p className="text-[13px] text-[#7b7b8b]">
+          Posts are saved to your calendar. Posting to social platforms isn&apos;t switched on yet.
+        </p>
+      )}
 
       <div aria-live="polite">
         {error && (

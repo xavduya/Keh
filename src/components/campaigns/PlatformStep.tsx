@@ -15,7 +15,7 @@ const PLATFORM_LABELS: Record<Platform, string> = {
 };
 
 export function PlatformStep() {
-  const { draft, setDraft, nextStep, prevStep, aiUpdatedFields } = useCampaign();
+  const { draft, setDraft, nextStep, prevStep, aiUpdatedFields, business } = useCampaign();
 
   function togglePlatform(p: Platform, checked: boolean) {
     const next = checked
@@ -82,8 +82,10 @@ export function PlatformStep() {
 
       <HintBox>
         TikTok: everything will be prepared for you. Add your preferred audio and publish
-        manually when it&apos;s time. Keh doesn&apos;t post to Facebook or Instagram for you yet —
-        your posts are saved to the calendar.
+        manually when it&apos;s time.{" "}
+        {business.publishingEnabled
+          ? "Facebook and Instagram posts are published for you when those accounts are connected."
+          : "Posting to Facebook and Instagram isn't switched on yet — posts are saved to your calendar."}
       </HintBox>
 
       {draft.platforms.length === 0 && (

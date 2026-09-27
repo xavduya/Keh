@@ -189,11 +189,12 @@ export function CalendarView({ posts, today }: { posts: EnrichedPost[]; today: s
                       </span>
                       <div className="space-y-1">
                         {dayPosts.slice(0, 2).map((p) => (
-                          <div
+                          <Link
                             key={p.id}
-                            title={p.title}
+                            href={`/campaigns/${p.campaignId}/edit`}
+                            title={`${p.title} — open to edit or reschedule`}
                             className={[
-                              "rounded-[4px] px-1.5 py-1 text-[11px] leading-tight",
+                              "block rounded-[4px] px-1.5 py-1 text-[11px] leading-tight hover:ring-1 hover:ring-current",
                               p.status === "PUBLISHED"
                                 ? "bg-[#edf7f2] text-[#1a7a55]"
                                 : p.status === "ACTION_REQUIRED"
@@ -209,7 +210,7 @@ export function CalendarView({ posts, today }: { posts: EnrichedPost[]; today: s
                             </div>
                             <div className="font-[600] truncate">{p.title}</div>
                             <div>{p.status.charAt(0) + p.status.slice(1).toLowerCase().replaceAll("_", " ")}</div>
-                          </div>
+                          </Link>
                         ))}
                         {dayPosts.length > 2 && (
                           <div

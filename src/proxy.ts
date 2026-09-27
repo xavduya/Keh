@@ -17,9 +17,9 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { publicEnv } from "@/lib/env";
 
-const AUTH_PAGES = ["/login", "/signup"];
+const AUTH_PAGES = ["/login", "/signup", "/forgot-password"];
 const PUBLIC_PREFIXES = ["/auth/"]; // e.g. /auth/callback
-const API_ROUTES_WITH_OWN_AUTH = ["/api/assistant"];
+const API_ROUTES_WITH_OWN_AUTH = ["/api/assistant", "/api/cron/publish", "/api/cron/metrics"];
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });

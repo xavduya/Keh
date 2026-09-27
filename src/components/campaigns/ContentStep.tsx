@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useState } from "react";
 import { Sparkles, ArrowRight } from "lucide-react";
 import { useCampaign } from "./CampaignContext";
-import { askWizardCopilot } from "./WizardAiCopilot";
+import { askWizardCopilot } from "@/hooks/useMarketingAssistant";
 import { SocialPlatformBadge } from "@/components/ui/social-platform-badge";
 import type { Platform } from "@/types";
 
@@ -21,7 +21,7 @@ export function ContentStep() {
     setDraft,
     nextStep,
     prevStep,
-    generateCaptions,
+    writeCaptions,
     product,
     business,
     aiUpdatedFields,
@@ -33,7 +33,7 @@ export function ContentStep() {
   }
 
   function handleRegenerate() {
-    generateCaptions(true);
+    writeCaptions();
   }
 
   function handleAskAiToPolish() {
@@ -109,7 +109,7 @@ export function ContentStep() {
               className="flex items-center gap-2 px-3 py-2 rounded-[7px] border border-[#e9e9ef] text-[13px] font-[600] hover:bg-[#f7f8fb] transition-colors"
             >
               <Sparkles size={13} />
-              Regenerate Template
+              {business.aiEnabled ? "Write new captions" : "Try another version"}
             </button>
             <button
               onClick={handleAskAiToPolish}

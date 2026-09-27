@@ -17,9 +17,11 @@ interface AuthFormProps {
   fields: AuthField[];
   submitLabel: string;
   pendingLabel: string;
+  /** "destructive" for irreversible actions such as deleting the account. */
+  submitVariant?: "default" | "destructive";
 }
 
-export function AuthForm({ action, fields, submitLabel, pendingLabel }: AuthFormProps) {
+export function AuthForm({ action, fields, submitLabel, pendingLabel, submitVariant = "default" }: AuthFormProps) {
   const [state, formAction, pending] = useActionState(action, undefined);
 
   // Submit via a transition instead of <form action>: React resets
@@ -70,7 +72,7 @@ export function AuthForm({ action, fields, submitLabel, pendingLabel }: AuthForm
         )}
       </div>
 
-      <Button type="submit" disabled={pending} className="w-full h-10 text-[14px] font-semibold">
+      <Button type="submit" variant={submitVariant} disabled={pending} className="w-full h-10 text-[14px] font-semibold">
         {pending ? pendingLabel : submitLabel}
       </Button>
     </form>

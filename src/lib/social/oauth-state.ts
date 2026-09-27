@@ -10,6 +10,7 @@
 
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { Platform } from "@/types";
+import { decryptToken, encryptToken } from "./token-crypto";
 
 export const OAUTH_COOKIE = "keh_social_oauth";
 export const OAUTH_COOKIE_MAX_AGE = 10 * 60; // seconds
@@ -40,4 +41,40 @@ export function verifyOAuthState(state: string | null, cookieNonce: string | und
   const b = Buffer.from(cookieNonce);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
   return { nonce: parsed.nonce, platform: parsed.platform };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Choosing a Page
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * When the owner manages several Pages, the callback stores their (encrypted)
+ * user token in this short-lived cookie and sends them to
+ * /social-accounts/choose, which lists the Pages and saves the one they pick.
+ */
+export const PAGE_PICK_COOKIE = "keh_social_page_pick";
+export const PAGE_PICK_COOKIE_PATH = "/social-accounts";
+
+export interface PagePick {
+  platform: OAuthState["platform"];
+  userToken: string;
+}
+
+export function encodePagePick(pick: PagePick): string {
+  return encryptToken(JSON.stringify(pick));
+}
+
+/** The pending pick from the cookie, or null if missing, expired or tampered with. */
+export function decodePagePick(value: string | undefined): PagePick | null {
+  // Only encrypted values: a plain JSON cookie must never be trusted.
+  if (!value?.startsWith("enc:v1:")) return null;
+  try {
+    const pick = JSON.parse(decryptToken(value)) as Partial<PagePick>;
+    if ((pick.platform !== "FACEBOOK" && pick.platform !== "INSTAGRAM") || typeof pick.userToken !== "string") {
+      return null;
+    }
+    return { platform: pick.platform, userToken: pick.userToken };
+  } catch {
+    return null;
+  }
 }

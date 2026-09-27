@@ -210,7 +210,7 @@ export function GoalStep() {
           className="flex items-center gap-2 px-5 py-2.5 rounded-[8px] bg-[#5849da] text-white text-[14px] font-[600] hover:bg-[#4a3cc7] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           <Sparkles size={15} />
-          Generate campaign
+          {draft.editId ? "Continue" : "Generate campaign"}
         </button>
       </div>
     </div>

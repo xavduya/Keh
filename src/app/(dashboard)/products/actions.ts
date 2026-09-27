@@ -4,8 +4,9 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getCurrentContext } from "@/lib/auth/context";
 import { ProductFormSchema } from "@/lib/validation/schemas";
-import { createProduct, getProductById, updateProduct } from "@/services/product.service";
-import { submittedFile, uploadBusinessImage, validateImage } from "@/services/storage.service";
+import { createProduct, deleteProduct, getProductById, updateProduct } from "@/services/product.service";
+import { countCampaignsForProduct } from "@/services/campaign.service";
+import { deleteImageByUrl, submittedFile, uploadBusinessImage, validateImage } from "@/services/storage.service";
 
 export type ProductFormState =
   | {
@@ -59,4 +60,34 @@ export async function saveProduct(
   revalidatePath("/products");
   revalidatePath("/campaigns/new");
   return { success: true };
+}
+
+/**
+ * Deletes a product and its photo. Products used by a campaign can't be
+ * deleted (the campaign still shows them); the owner can mark them
+ * unavailable instead.
+ */
+export async function removeProduct(productId: string): Promise<{ error?: string }> {
+  const { business } = await getCurrentContext();
+  try {
+    const product = typeof productId === "string" && productId ? await getProductById(productId) : null;
+    if (!product || product.businessId !== business.id) return { error: "That product no longer exists." };
+
+    const used = await countCampaignsForProduct(business.id, product.id);
+    if (used > 0) {
+      return {
+        error: `${product.name} is used in ${used} campaign${used === 1 ? "" : "s"}, so it can't be deleted. Set it to "Unavailable" instead, or delete those campaigns first.`,
+      };
+    }
+
+    await deleteProduct(business.id, product.id);
+    if (product.imageUrl) await deleteImageByUrl(product.imageUrl);
+  } catch (err) {
+    console.error("removeProduct failed", err);
+    return { error: "We couldn't delete that product. Please try again." };
+  }
+
+  revalidatePath("/products");
+  revalidatePath("/campaigns/new");
+  return {};
 }

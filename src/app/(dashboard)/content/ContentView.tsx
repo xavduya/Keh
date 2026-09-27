@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Plus } from "lucide-react";
@@ -11,6 +11,8 @@ import { PostStatusBadge } from "@/components/ui/post-status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatDateKey, manilaDateKey, manilaTime } from "@/utils/datetime";
 import type { EnrichedPost } from "@/types";
+import { isCampaignEditable } from "@/utils";
+import { markTikTokPosted } from "../campaigns/actions";
 
 const FILTERS = ["All", "Drafts", "Scheduled", "Published", "Top Performing"];
 
@@ -19,9 +21,41 @@ function filterPosts(posts: EnrichedPost[], filter: string): EnrichedPost[] {
     case "Drafts": return posts.filter((p) => p.status === "DRAFT");
     case "Scheduled": return posts.filter((p) => p.status === "SCHEDULED");
     case "Published": return posts.filter((p) => p.status === "PUBLISHED");
-    case "Top Performing": return posts.filter((p) => p.reach > 4000);
+    // The business's own best posts, not a fixed reach number.
+    case "Top Performing":
+      return posts
+        .filter((p) => p.status === "PUBLISHED" && p.reach > 0)
+        .sort((a, b) => b.reach - a.reach)
+        .slice(0, 6);
     default: return posts;
   }
+}
+
+function MarkPostedButton({ postId }: { postId: string }) {
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() =>
+          startTransition(async () => {
+            const result = await markTikTokPosted(postId);
+            setError(result.error ?? null);
+          })
+        }
+        className="px-3 py-1.5 rounded-[7px] bg-[#5849da] text-white text-[13px] font-[600] hover:bg-[#4a3cc7] disabled:opacity-50"
+      >
+        {pending ? "Saving…" : "I posted it"}
+      </button>
+      {error && (
+        <span role="alert" className="basis-full text-[12px] text-destructive">
+          {error}
+        </span>
+      )}
+    </>
+  );
 }
 
 function ContentCard({ post }: { post: EnrichedPost }) {
@@ -55,12 +89,31 @@ function ContentCard({ post }: { post: EnrichedPost }) {
         <p className="text-[12px] text-[#7b7b8b]">
           {formatDateKey(manilaDateKey(post.scheduledAt), { month: "short", day: "numeric", year: "numeric" })} · {manilaTime(post.scheduledAt)}
         </p>
-        <p className="text-[13px] text-[#7b7b8b]">
-          {post.reach
-            ? `${post.reach.toLocaleString()} people reached`
-            : "Performance available after publishing"}
-        </p>
+        {post.status === "FAILED" && post.lastError ? (
+          <p role="alert" className="text-[13px] text-destructive">
+            {post.lastError}
+          </p>
+        ) : post.status === "ACTION_REQUIRED" ? (
+          <p className="text-[13px] text-[#a6721d]">Post this on TikTok yourself, then mark it as posted.</p>
+        ) : (
+          <p className="text-[13px] text-[#7b7b8b]">
+            {post.reach
+              ? `${post.reach.toLocaleString()} people reached`
+              : post.status === "PUBLISHED"
+                ? "Results appear within a few hours"
+                : "Performance available after publishing"}
+          </p>
+        )}
         <div className="flex gap-2 mt-auto pt-2 flex-wrap">
+          {post.platform === "TIKTOK" && post.status === "ACTION_REQUIRED" && <MarkPostedButton postId={post.id} />}
+          {isCampaignEditable([post]) && (
+            <Link
+              href={`/campaigns/${post.campaignId}/edit`}
+              className="px-3 py-1.5 rounded-[7px] border border-[#e9e9ef] text-[13px] font-[500] hover:bg-[#f7f8fb] transition-colors"
+            >
+              Edit
+            </Link>
+          )}
           <Link
             href={`/campaigns/new?product=${post.productId}`}
             className="px-3 py-1.5 rounded-[7px] border border-[#e9e9ef] text-[13px] font-[500] hover:bg-[#f7f8fb] transition-colors"

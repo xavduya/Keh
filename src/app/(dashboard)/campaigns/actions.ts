@@ -4,25 +4,42 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentContext } from "@/lib/auth/context";
 import { CampaignDraftSchema } from "@/lib/validation/schemas";
-import { createCampaignWithPosts } from "@/services/campaign.service";
+import {
+  createCampaignWithPosts,
+  deleteCampaign,
+  getCampaignWithPosts,
+  markPostedManually,
+  updateCampaignWithPosts,
+} from "@/services/campaign.service";
 import { getProductById } from "@/services/product.service";
 import {
   consumeCampaignQuota,
+  consumeScheduledPostQuota,
   getSubscription,
   releaseCampaignQuota,
 } from "@/services/business.service";
 import { formatManilaDate } from "@/utils/datetime";
 import { goalLabel } from "@/constants";
+import { isCampaignEditable } from "@/utils";
+import { publishDuePosts } from "@/services/publishing.service";
+import { isPublishingEnabled } from "@/lib/env";
 import { manilaToUtcIso } from "@/utils/datetime";
 import type { CampaignDraft, PostStatus } from "@/types";
 
 /**
- * schedule — posts go out at the chosen date/time
- * publish  — posts are queued for right now (no live publishing yet)
+ * schedule — posts go out at the chosen date/time (the publish job, every 5 minutes)
+ * publish  — posts go out right away (only with PUBLISHING_ENABLED; otherwise saved for now)
  * draft    — saved for later, nothing is scheduled
  */
 export type SaveIntent = "schedule" | "publish" | "draft";
 
+const CAMPAIGN_PAGES = ["/campaigns", "/calendar", "/content", "/dashboard", "/products", "/subscription", "/analytics"];
+
+function revalidateCampaignPages() {
+  for (const path of CAMPAIGN_PAGES) revalidatePath(path);
+}
+
+/** Creates a campaign, or updates the one in `draft.editId`. */
 export async function saveCampaign(
   draft: CampaignDraft,
   intent: SaveIntent
@@ -36,11 +53,22 @@ export async function saveCampaign(
   const data = parsed.data;
   const platforms = [...new Set(data.platforms)];
 
+  const editId = typeof draft.editId === "string" && draft.editId ? draft.editId : null;
+  const existing = editId ? await getCampaignWithPosts(business.id, editId) : null;
+  if (editId && !existing) {
+    return { error: "That campaign no longer exists." };
+  }
+  if (existing && !isCampaignEditable(existing.posts)) {
+    return { error: "This campaign has already been published, so it can't be changed." };
+  }
+
   const product = await getProductById(data.productId);
   if (!product || product.businessId !== business.id) {
     return { error: "That product no longer exists. Pick another one." };
   }
-  if (product.availability !== "ACTIVE") {
+  // An edit may keep a product that has since become unavailable.
+  const keepsProduct = existing?.productId === product.id;
+  if (product.availability !== "ACTIVE" && !keepsProduct) {
     return { error: `${product.name} isn't available right now. Pick another product.` };
   }
 
@@ -70,39 +98,98 @@ export async function saveCampaign(
     return platform === "TIKTOK" ? "ACTION_REQUIRED" : "SCHEDULED";
   };
 
-  // Every saved campaign uses one of the plan's monthly AI campaigns;
-  // scheduled posts (not drafts) use its monthly scheduled posts.
+  const input = {
+    goal: data.goal,
+    product,
+    promotion: data.promotion,
+    duration: data.duration,
+    instructions: data.instructions,
+    title: `${product.name} · ${goalLabel(data.goal)}`,
+    scheduledAt,
+    posts: platforms.map((platform) => ({
+      platform,
+      caption: data.captions[platform]!,
+      status: statusFor(platform),
+    })),
+  };
   const scheduledPosts = intent === "draft" ? 0 : platforms.length;
-  const quota = await consumeCampaignQuota(business.id, scheduledPosts);
-  if (!quota.allowed) {
-    return { error: await quotaMessage(business.id, quota.reason) };
+  let campaignId: string;
+
+  if (existing) {
+    // Editing isn't a new campaign: only posts scheduled beyond what the
+    // campaign already had count against the plan.
+    const alreadyScheduled = existing.posts.filter((p) => p.status !== "DRAFT").length;
+    const quota = await consumeScheduledPostQuota(business.id, scheduledPosts - alreadyScheduled);
+    if (!quota.allowed) {
+      return { error: await quotaMessage(business.id, quota.reason) };
+    }
+    try {
+      await updateCampaignWithPosts(business.id, existing.id, input);
+      campaignId = existing.id;
+    } catch (err) {
+      console.error("saveCampaign (edit) failed", err);
+      return { error: "We couldn't save your changes. Please try again." };
+    }
+  } else {
+    // Every new campaign uses one of the plan's monthly AI campaigns;
+    // scheduled posts (not drafts) use its monthly scheduled posts.
+    const quota = await consumeCampaignQuota(business.id, scheduledPosts);
+    if (!quota.allowed) {
+      return { error: await quotaMessage(business.id, quota.reason) };
+    }
+    try {
+      campaignId = await createCampaignWithPosts(business.id, input);
+    } catch (err) {
+      console.error("saveCampaign failed", err);
+      if (!("unavailable" in quota)) await releaseCampaignQuota(business.id, scheduledPosts);
+      return { error: "We couldn't save your campaign. Please try again." };
+    }
   }
 
-  try {
-    await createCampaignWithPosts(business.id, {
-      goal: data.goal,
-      product,
-      promotion: data.promotion,
-      duration: data.duration,
-      instructions: data.instructions,
-      title: `${product.name} · ${goalLabel(data.goal)}`,
-      scheduledAt,
-      posts: platforms.map((platform) => ({
-        platform,
-        caption: data.captions[platform]!,
-        status: statusFor(platform),
-      })),
-    });
-  } catch (err) {
-    console.error("saveCampaign failed", err);
-    if (!("unavailable" in quota)) await releaseCampaignQuota(business.id, scheduledPosts);
-    return { error: "We couldn't save your campaign. Please try again." };
+  if (intent === "publish" && isPublishingEnabled()) {
+    // Post now instead of waiting for the next job run. Each post ends up
+    // PUBLISHED or FAILED with a reason the owner sees on /campaigns.
+    try {
+      await publishDuePosts({ campaignId });
+    } catch (err) {
+      console.error("Publish now failed; the publish job will retry", err);
+    }
   }
 
-  for (const path of ["/campaigns", "/calendar", "/content", "/dashboard", "/products", "/subscription"]) {
-    revalidatePath(path);
-  }
+  revalidateCampaignPages();
   redirect("/campaigns");
+}
+
+/**
+ * Deletes a campaign and its posts from Keh. Posts already published on
+ * Facebook / Instagram stay there. Plan usage isn't given back.
+ */
+export async function removeCampaign(campaignId: string): Promise<{ error?: string }> {
+  const { business } = await getCurrentContext();
+  if (typeof campaignId !== "string" || !campaignId) return { error: "That campaign no longer exists." };
+  try {
+    await deleteCampaign(business.id, campaignId);
+  } catch (err) {
+    console.error("removeCampaign failed", err);
+    return { error: "We couldn't delete that campaign. Please try again." };
+  }
+  revalidateCampaignPages();
+  return {};
+}
+
+/** "I posted it": the owner posted a TikTok post themselves. */
+export async function markTikTokPosted(postId: string): Promise<{ error?: string }> {
+  await getCurrentContext();
+  try {
+    if (typeof postId !== "string" || !(await markPostedManually(postId))) {
+      return { error: "That post was already marked as posted." };
+    }
+  } catch (err) {
+    console.error("markTikTokPosted failed", err);
+    return { error: "We couldn't update that post. Please try again." };
+  }
+  revalidateCampaignPages();
+  return {};
 }
 
 async function quotaMessage(

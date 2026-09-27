@@ -12,6 +12,7 @@ import { formatPrice } from "@/utils";
 import type { PostingSlot } from "@/lib/analytics";
 import {
   APPLY_AI_CAMPAIGN_EVENT,
+  askWizardCopilot,
   takePendingAiCampaign,
   type PendingAiCampaign,
 } from "@/hooks/useMarketingAssistant";
@@ -25,6 +26,10 @@ export interface WizardBusiness {
   ctaLabel: string;
   /** Best time to post, from the business's results (or the Friday-evening default). */
   postingSlot: PostingSlot;
+  /** A language model is configured, so captions can be written by the AI. */
+  aiEnabled: boolean;
+  /** Keh posts to Facebook / Instagram (PUBLISHING_ENABLED); otherwise posts are only saved. */
+  publishingEnabled: boolean;
 }
 
 interface CampaignContextValue {
@@ -43,6 +48,8 @@ interface CampaignContextValue {
   prevStep: () => void;
   setStep: (n: number) => void;
   generateCaptions: (variation?: boolean) => void;
+  /** Asks the AI to write fresh captions; falls back to a template variation without AI. */
+  writeCaptions: () => void;
   /** Applies AI changes to the form fields and records the changelog */
   applyAiUpdates: (
     updates: Partial<CampaignDraft>,
@@ -64,7 +71,11 @@ export function useCampaign() {
   return ctx;
 }
 
-/** Template captions — placeholder until the AI layer generates them. */
+/**
+ * Template captions: shown instantly, and all the owner gets when no AI key
+ * is configured. Built only from the business's own details, without the
+ * filler phrases the AI prompt bans ("treat yourself", "your next favorite"…).
+ */
 function buildCaptions(
   draft: CampaignDraft,
   product: Product,
@@ -77,12 +88,15 @@ function buildCaptions(
     : "";
   const place = business.location ? `${business.name}, ${business.location}` : business.name;
   const tag = `#${business.name.replace(/[^A-Za-z0-9]/g, "")}`;
-  const opening = variation ? `Your next ${product.name} moment is calling.` : "Treat yourself today!";
+  const opening = variation
+    ? `${product.name}, ${price}, at ${place}.`
+    : `New at ${business.name}? Start with our ${product.name} — ${price}.`;
+  const details = product.description ? `\n\n${product.description}` : "";
 
   return {
-    FACEBOOK: `${opening} Try our ${product.name} for ${price}.${offer}\n\n${product.description}\nFind us at ${place}. ${business.ctaLabel} and make your day a little better.`,
-    INSTAGRAM: `${variation ? "A little bit of happiness" : "Your daily dose of good vibes"} ✨\n${product.name} · ${price}${offer}\n📍 ${place}\n${business.ctaLabel} 💜\n${tag} #SupportLocal`,
-    TIKTOK: `POV: you found your new favorite ${product.category.toLowerCase() || "treat"} 👀\n${product.name} for ${price}.${offer}\n📍 ${place}\n${tag} #SupportLocal`,
+    FACEBOOK: `${opening}${offer}${details}\n\n📍 ${place}\n${business.ctaLabel}`,
+    INSTAGRAM: `${product.name} · ${price}${offer}${details}\n\n📍 ${place}\n${business.ctaLabel}\n${tag} #SupportLocal`,
+    TIKTOK: `${product.name} at ${business.name} for ${price}.${offer}\n📍 ${place}\n${tag} #SupportLocal\n\n🎬 Video plan: 1) show the ${product.name} up close, 2) show how it's made or served, 3) end on the price and where to find you.`,
   };
 }
 
@@ -98,6 +112,7 @@ export function CampaignProvider({
   initialProductId,
   initialGoal,
   initialPromotion,
+  initialDraft,
 }: {
   children: React.ReactNode;
   products: Product[];
@@ -105,11 +120,13 @@ export function CampaignProvider({
   initialProductId?: string;
   initialGoal?: CampaignGoal;
   initialPromotion?: string;
+  /** An existing campaign being edited (draft.editId is its ID). */
+  initialDraft?: CampaignDraft;
 }) {
   const firstProductId =
     products.find((p) => p.id === initialProductId)?.id ?? products[0]?.id ?? "";
 
-  const [draft, setDraftState] = useState<CampaignDraft>({
+  const [draft, setDraftState] = useState<CampaignDraft>(initialDraft ?? {
     goal: initialGoal ?? "PROMOTE_PRODUCT",
     productId: firstProductId,
     promotion: initialPromotion ?? "",
@@ -123,7 +140,10 @@ export function CampaignProvider({
   });
   const [step, setStep] = useState(0);
   // Which inputs the current captions were generated from.
-  const [captionsKey, setCaptionsKey] = useState<string | null>(null);
+  // An edited campaign's captions belong to its saved inputs; keep them.
+  const [captionsKey, setCaptionsKey] = useState<string | null>(
+    initialDraft ? captionInputsKey(initialDraft) : null
+  );
 
   // What the AI last changed, so the owner can review or undo it.
   const [aiChanges, setAiChanges] = useState<AIUpdateRecord | null>(null);
@@ -189,12 +209,31 @@ export function CampaignProvider({
     setAiChanges(null);
   }
 
+  /**
+   * The AI writes captions for every platform (so adding TikTok later
+   * doesn't fall back to a template). The copilot sends the current draft
+   * and applies the result like any other AI change, with undo.
+   */
+  function writeCaptions() {
+    if (!product) return;
+    if (!business.aiEnabled) {
+      generateCaptions(true);
+      return;
+    }
+    askWizardCopilot(
+      `Write captions for Facebook, Instagram and TikTok for this ${product.name} campaign.`,
+      "captions"
+    );
+  }
+
   function nextStep() {
     if (step === 0) {
       if (!draft.goal || !product) return;
-      // Regenerate if the goal, product or offer changed since the last run.
+      // Regenerate if the goal, product or offer changed since the last run:
+      // the template shows at once, then the AI replaces it.
       if (captionsKey !== captionInputsKey(draft)) {
         generateCaptions();
+        if (business.aiEnabled) writeCaptions();
       }
     }
     setStep((s) => Math.min(s + 1, 4));
@@ -243,6 +282,7 @@ export function CampaignProvider({
         prevStep,
         setStep,
         generateCaptions,
+        writeCaptions,
         applyAiUpdates,
         revertAiUpdates,
         dismissAiBanner,

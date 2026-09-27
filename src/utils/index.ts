@@ -122,3 +122,8 @@ export function truncate(str: string, maxLength: number): string {
   if (str.length <= maxLength) return str;
   return str.slice(0, maxLength - 1) + "…";
 }
+
+/** Posts that are live (or going live) can't be changed from Keh. */
+export function isCampaignEditable(posts: { status: string }[]): boolean {
+  return posts.every((p) => p.status !== "PUBLISHED" && p.status !== "PUBLISHING");
+}

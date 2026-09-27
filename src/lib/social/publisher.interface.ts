@@ -1,43 +1,50 @@
 /**
  * Social publisher interface
  *
- * All social platform adapters must implement this interface.
- * Campaign and scheduling code should depend on this interface,
- * not on any specific platform's API.
+ * One adapter per platform that Keh can post to by API (Facebook Pages,
+ * Instagram Business). TikTok has no publishing API for Keh: its posts are
+ * prepared as ACTION_REQUIRED and the owner posts them.
  *
- * NOTE: This is a stub. Implement in Phase 7.
- *
- * Concrete implementations:
- *   FacebookPublisher   — lib/social/facebook.publisher.ts
- *   InstagramPublisher  — lib/social/instagram.publisher.ts
- *   TikTokPublisher     — lib/social/tiktok.publisher.ts  (Phase 7+)
+ * Scheduling is Keh's job, not the platform's: the publish job
+ * (services/publishing.service.ts, run by /api/cron/publish) calls
+ * publish() when a post is due.
  */
 
-import type { SocialPost, PostMetric } from "@/types";
+import type { Platform } from "@/types";
 
-export interface PublishResult {
-  success: boolean;
-  externalPostId?: string;
-  error?: string;
+export interface PublishablePost {
+  id: string;
+  platform: Platform;
+  caption: string;
+  /** Public image URL (the product photo), if any. */
+  mediaUrl?: string;
+}
+
+export interface PublishAccount {
+  /** Facebook Page ID or Instagram Business account ID. */
+  accountId: string;
+  accessToken: string;
+}
+
+export type PublishResult =
+  | { ok: true; externalPostId: string }
+  /** `error` is shown to the owner — plain language, no API jargon. */
+  | { ok: false; error: string };
+
+/** Counts for one post at one point in time (a post_metrics row). */
+export interface PostInsights {
+  reach: number;
+  impressions: number;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+  clicks: number;
 }
 
 export interface SocialPublisher {
-  /**
-   * Publish a post immediately to the platform.
-   */
-  publish(post: SocialPost): Promise<PublishResult>;
-
-  /**
-   * Schedule a post for future publication.
-   * Some platforms (e.g. TikTok) do not support server-side scheduling
-   * and will return a manual-action result.
-   */
-  schedule(post: SocialPost): Promise<PublishResult>;
-
-  /**
-   * Retrieve current performance metrics for a published post.
-   */
-  getMetrics(externalPostId: string): Promise<Partial<PostMetric>>;
+  publish(post: PublishablePost, account: PublishAccount): Promise<PublishResult>;
+  /** Latest counts for a published post. Missing numbers are 0. */
+  getInsights(externalPostId: string, account: PublishAccount): Promise<PostInsights>;
 }
-
-export {}; // Placeholder — remove when implementing

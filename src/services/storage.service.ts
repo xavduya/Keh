@@ -7,7 +7,7 @@
  * the folder of a business the user owns (migration 008).
  */
 
-import { createServerClient } from "@/lib/supabase/server";
+import { createAdminClient, createServerClient } from "@/lib/supabase/server";
 import { MAX_UPLOAD_BYTES } from "@/constants";
 
 const IMAGE_BUCKET = "product-images";
@@ -54,4 +54,36 @@ export async function uploadBusinessImage(
   if (error) throw error;
 
   return supabase.storage.from(IMAGE_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+/**
+ * Deletes every image under a business's folder (product photos and the
+ * "brand" subfolder). Server-only: runs with the secret key, for account
+ * deletion. Best effort — errors are logged, not thrown.
+ */
+export async function deleteBusinessImages(businessId: string): Promise<void> {
+  const storage = createAdminClient().storage.from(IMAGE_BUCKET);
+  for (const folder of [businessId, `${businessId}/brand`]) {
+    const { data, error } = await storage.list(folder, { limit: 1000 });
+    if (error) {
+      console.error("Could not list images to delete", folder, error.message);
+      continue;
+    }
+    // Sub-folders are listed with a null id; only remove files.
+    const paths = data.filter((item) => item.id !== null).map((item) => `${folder}/${item.name}`);
+    if (paths.length === 0) continue;
+    const { error: removeError } = await storage.remove(paths);
+    if (removeError) console.error("Could not delete images", folder, removeError.message);
+  }
+}
+
+/** Removes an image this app uploaded, given its public URL. Best effort; other URLs are ignored. */
+export async function deleteImageByUrl(url: string): Promise<void> {
+  const marker = `/storage/v1/object/public/${IMAGE_BUCKET}/`;
+  const index = url.indexOf(marker);
+  if (index < 0) return;
+  const path = decodeURIComponent(url.slice(index + marker.length));
+  const supabase = await createServerClient();
+  const { error } = await supabase.storage.from(IMAGE_BUCKET).remove([path]);
+  if (error) console.error("Could not delete image", path, error.message);
 }
