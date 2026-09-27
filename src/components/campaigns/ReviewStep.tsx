@@ -6,6 +6,7 @@ import { useCampaign } from "./CampaignContext";
 import { SocialPlatformBadge } from "@/components/ui/social-platform-badge";
 import { CAMPAIGN_GOALS } from "@/constants";
 import type { Platform } from "@/types";
+import { formatPrice } from "@/utils";
 
 const PLATFORM_LABELS: Record<Platform, string> = {
   FACEBOOK: "Facebook",
@@ -14,8 +15,7 @@ const PLATFORM_LABELS: Record<Platform, string> = {
 };
 
 export function ReviewStep() {
-  const { draft, products, nextStep, prevStep } = useCampaign();
-  const product = products.find((p) => p.id === draft.productId) ?? products[0];
+  const { draft, nextStep, prevStep, product, business } = useCampaign();
   const goalLabel = CAMPAIGN_GOALS.find((g) => g.value === draft.goal)?.label ?? draft.goal;
 
   return (
@@ -31,12 +31,14 @@ export function ReviewStep() {
 
       {/* Summary row */}
       <div className="flex items-center gap-4 p-4 bg-[#f7f8fb] rounded-[10px]">
-        <div className="relative w-16 h-16 rounded-[8px] overflow-hidden shrink-0">
-          <Image src={product.imageUrl} alt={product.name} fill className="object-cover" sizes="64px" unoptimized />
-        </div>
+        {product?.imageUrl && (
+          <div className="relative w-16 h-16 rounded-[8px] overflow-hidden shrink-0">
+            <Image src={product.imageUrl} alt={product.name} fill className="object-cover" sizes="64px" unoptimized />
+          </div>
+        )}
         <div>
           <h3 className="font-heading font-[700] text-[16px] text-[#262535]">
-            {product.name} · {goalLabel}
+            {product?.name} · {goalLabel}
           </h3>
           {draft.promotion && (
             <p className="text-[13px] text-[#7b7b8b]">
@@ -58,7 +60,7 @@ export function ReviewStep() {
       <div className="bg-[#f0edff] text-[#5849da] rounded-lg px-4 py-3 text-[13px]">
         <strong>Your strategy</strong>
         <br />
-        Short preparation video · Friendly Taglish caption · show the ₱{product.price} price.
+        Short preparation video · {business.toneLabel} {business.languageLabel} caption · show the {formatPrice(product?.promoPrice ?? product?.price ?? 0)} price.
         <br />
         Audience instructions: {draft.instructions || "Keep it welcoming."}
       </div>

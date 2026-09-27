@@ -6,8 +6,7 @@ import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { FilterTabs } from "@/components/ui/filter-tabs";
 import { SocialPlatformBadge } from "@/components/ui/social-platform-badge";
-import { timeLabel } from "@/utils";
-import { DEMO_DATE } from "@/constants";
+import { manilaDateKey, manilaTime } from "@/utils/datetime";
 import type { EnrichedPost, Platform } from "@/types";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -22,11 +21,10 @@ function getDateStr(year: number, month: number, day: number) {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-export function CalendarView({ posts }: { posts: EnrichedPost[] }) {
-  // Start calendar on the month of the demo date
-  const demoDate = new Date(DEMO_DATE);
-  const [month, setMonth] = useState(demoDate.getMonth());
-  const [year, setYear] = useState(demoDate.getFullYear());
+export function CalendarView({ posts, today }: { posts: EnrichedPost[]; today: string }) {
+  const [todayYear, todayMonth] = today.split("-").map(Number);
+  const [month, setMonth] = useState(todayMonth - 1); // 0-indexed
+  const [year, setYear] = useState(todayYear);
   const [viewMode, setViewMode] = useState<"month" | "week">("month");
   const [filter, setFilter] = useState("All");
 
@@ -47,6 +45,36 @@ export function CalendarView({ posts }: { posts: EnrichedPost[] }) {
     year: "numeric",
   });
 
+  // Month summary for the header (from PR #6), on real posts in Manila time.
+  const monthPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const monthPosts = posts.filter((post) => {
+    const isInMonth = manilaDateKey(post.scheduledAt).startsWith(monthPrefix);
+    const matchesPlatform =
+      filter === "All" || post.platforms.includes(PLATFORM_MAP[filter]);
+    return isInMonth && matchesPlatform;
+  });
+  const scheduledCount = monthPosts.filter(
+    (post) => post.status === "SCHEDULED" || post.status === "PUBLISHING"
+  ).length;
+  const publishedCount = monthPosts.filter(
+    (post) => post.status === "PUBLISHED"
+  ).length;
+  const draftCount = monthPosts.filter((post) => post.status === "DRAFT").length;
+  const attentionCount = monthPosts.filter(
+    (post) => post.status === "ACTION_REQUIRED" || post.status === "FAILED"
+  ).length;
+  const postNoun = monthPosts.length === 1 ? "post" : "posts";
+  const platformDescription = filter === "All" ? "across all platforms" : `on ${filter}`;
+  const calendarSummary = [
+    `${monthPosts.length} ${postNoun} ${platformDescription}`,
+    `${scheduledCount} scheduled`,
+    `${publishedCount} published`,
+    `${draftCount} ${draftCount === 1 ? "draft" : "drafts"}`,
+    ...(attentionCount > 0
+      ? [`${attentionCount} ${attentionCount === 1 ? "needs" : "need"} attention`]
+      : []),
+  ].join(" · ");
+
   function prevMonth() {
     if (month === 0) { setMonth(11); setYear((y) => y - 1); }
     else setMonth((m) => m - 1);
@@ -59,18 +87,19 @@ export function CalendarView({ posts }: { posts: EnrichedPost[] }) {
   function postsForDay(day: number) {
     const dateStr = getDateStr(year, month, day);
     return posts.filter((p) => {
-      const postDate = p.scheduledAt.slice(0, 10);
-      if (postDate !== dateStr) return false;
+      if (manilaDateKey(p.scheduledAt) !== dateStr) return false;
       if (filter === "All") return true;
       return p.platforms.includes(PLATFORM_MAP[filter]);
     });
   }
 
+  const todayStr = today;
+
   return (
     <div className="space-y-5">
       <PageHeader
         title="Your content calendar"
-        subtitle="A little consistency goes a long way."
+        subtitle={`${monthLabel}: ${calendarSummary}.`}
         action={
           <Link
             href="/campaigns/new"
@@ -103,7 +132,7 @@ export function CalendarView({ posts }: { posts: EnrichedPost[] }) {
             <ChevronRight size={15} />
           </button>
           <button
-            onClick={() => { setMonth(demoDate.getMonth()); setYear(demoDate.getFullYear()); }}
+            onClick={() => { setMonth(todayMonth - 1); setYear(todayYear); }}
             className="px-3 py-1.5 rounded-[7px] border border-[#e9e9ef] text-[13px] font-[500] hover:bg-[#f7f8fb] transition-colors"
           >
             Today
@@ -160,7 +189,7 @@ export function CalendarView({ posts }: { posts: EnrichedPost[] }) {
           <div key={rowIdx} className="grid grid-cols-7 border-b border-[#e9e9ef] last:border-0">
             {cells.slice(rowIdx * 7, rowIdx * 7 + 7).map((day, colIdx) => {
               const dateStr = day ? getDateStr(year, month, day) : "";
-              const isToday = dateStr === DEMO_DATE;
+              const isToday = dateStr === todayStr;
               const dayPosts = day ? postsForDay(day) : [];
 
               return (
@@ -200,10 +229,10 @@ export function CalendarView({ posts }: { posts: EnrichedPost[] }) {
                               {p.platforms.slice(0, 2).map((pl) => (
                                 <SocialPlatformBadge key={pl} platform={pl} size="sm" />
                               ))}
-                              <span className="font-[600]">{timeLabel(p.scheduledAt.slice(11, 16))}</span>
+                              <span className="font-[600]">{manilaTime(p.scheduledAt)}</span>
                             </div>
                             <div className="font-[600] truncate">{p.title}</div>
-                            <div>{p.status.charAt(0) + p.status.slice(1).toLowerCase().replace("_", " ")}</div>
+                            <div>{p.status.charAt(0) + p.status.slice(1).toLowerCase().replaceAll("_", " ")}</div>
                           </div>
                         ))}
                         {dayPosts.length > 2 && (

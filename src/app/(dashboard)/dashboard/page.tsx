@@ -11,35 +11,36 @@ import { PostStatusBadge } from "@/components/ui/post-status-badge";
 import { getAnalyticsSummary, getInsights } from "@/services/analytics.service";
 import { getPosts } from "@/services/campaign.service";
 import { getConnectedAccounts } from "@/services/social-account.service";
-import { timeLabel } from "@/utils";
+import { addDays, formatDateKey, manilaDateKey, manilaTime, todayKey } from "@/utils/datetime";
+import { getCurrentContext } from "@/lib/auth/context";
 import type { EnrichedPost } from "@/types";
 
-const DEMO_DATE = "2026-09-26";
-
-function groupPostsByDate(posts: EnrichedPost[]) {
-  const today = posts.filter((p) => p.scheduledAt.startsWith(DEMO_DATE));
-  const tomorrow = posts.filter((p) =>
-    p.scheduledAt.startsWith("2026-09-27")
-  );
-  return { today, tomorrow };
+function groupPostsByDate(posts: EnrichedPost[], today: string) {
+  const tomorrow = addDays(today, 1);
+  const upcoming = posts.filter((p) => p.status !== "PUBLISHED" && p.status !== "DRAFT");
+  return {
+    today: upcoming.filter((p) => manilaDateKey(p.scheduledAt) === today),
+    tomorrow: upcoming.filter((p) => manilaDateKey(p.scheduledAt) === tomorrow),
+  };
 }
 
 function PostRow({ post }: { post: EnrichedPost }) {
-  const time = post.scheduledAt.slice(11, 16);
   return (
     <div className="flex items-center gap-4 py-3 border-b border-[#e9e9ef] last:border-0">
       <span className="text-[13px] text-[#7b7b8b] w-16 shrink-0 font-[500]">
-        {timeLabel(time)}
+        {manilaTime(post.scheduledAt)}
       </span>
-      <div className="w-10 h-10 rounded-[6px] overflow-hidden shrink-0 relative">
-        <Image
-          src={post.product.imageUrl}
-          alt={post.product.name}
-          fill
-          className="object-cover"
-          sizes="40px"
-          unoptimized
-        />
+      <div className="w-10 h-10 rounded-[6px] overflow-hidden shrink-0 relative bg-[#f7f8fb]">
+        {post.product.imageUrl && (
+          <Image
+            src={post.product.imageUrl}
+            alt=""
+            fill
+            className="object-cover"
+            sizes="40px"
+            unoptimized
+          />
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-[14px] font-[600] text-[#262535] truncate">{post.title}</p>
@@ -55,18 +56,19 @@ function PostRow({ post }: { post: EnrichedPost }) {
   );
 }
 
-// Demo business ID — will come from Supabase session in Phase 5
-const DEMO_BUSINESS_ID = "biz_001";
-
 export default async function DashboardPage() {
+  const { user, business } = await getCurrentContext();
   const [summary, posts, insights, connectedAccounts] = await Promise.all([
-    getAnalyticsSummary(DEMO_BUSINESS_ID),
-    getPosts(DEMO_BUSINESS_ID),
-    getInsights(DEMO_BUSINESS_ID),
-    getConnectedAccounts(DEMO_BUSINESS_ID),
+    getAnalyticsSummary(business.id),
+    getPosts(business.id),
+    getInsights(business.id),
+    getConnectedAccounts(business.id),
   ]);
+  const firstName = user.fullName.split(" ")[0];
 
-  const { today, tomorrow } = groupPostsByDate(posts);
+  const todayDate = todayKey();
+  const { today, tomorrow } = groupPostsByDate(posts, todayDate);
+  const shortDate = (key: string) => formatDateKey(key, { month: "short", day: "numeric" });
   const actionRequired = posts.find((p) => p.status === "ACTION_REQUIRED");
   const connectedCount = connectedAccounts.length;
 
@@ -83,15 +85,14 @@ export default async function DashboardPage() {
       <PageHeader
         title={
           <>
-            Good afternoon, Juan{" "}
+            Good afternoon, {firstName}{" "}
             <span style={{ fontSize: 25 }}>👋</span>
           </>
         }
-        subtitle="Here's what your social media looks like today."
         action={
           <span className="text-[13px] text-[#7b7b8b] flex items-center gap-2">
             <Calendar size={14} />
-            Saturday, September 26, 2026
+            {formatDateKey(todayDate)}
           </span>
         }
       />
@@ -140,16 +141,18 @@ export default async function DashboardPage() {
                   Create Recommended Campaign
                 </Link>
               </div>
-              <div className="hidden sm:block relative w-[140px] h-[160px] rounded-[10px] overflow-hidden shrink-0">
-                <Image
-                  src={posts[0]?.product.imageUrl ?? ""}
-                  alt="Matcha Latte"
-                  fill
-                  className="object-cover"
-                  sizes="140px"
-                  unoptimized
-                />
-              </div>
+              {posts[0]?.product.imageUrl && (
+                <div className="hidden sm:block relative w-[140px] h-[160px] rounded-[10px] overflow-hidden shrink-0">
+                  <Image
+                    src={posts[0].product.imageUrl}
+                    alt={posts[0].product.name}
+                    fill
+                    className="object-cover"
+                    sizes="140px"
+                    unoptimized
+                  />
+                </div>
+              )}
             </div>
           </div>
           <div className="border-t border-[#e9e9ef] px-6 py-3 flex items-center justify-between">
@@ -265,16 +268,25 @@ export default async function DashboardPage() {
           {today.length > 0 && (
             <>
               <p className="text-[11px] font-[700] text-[#7b7b8b] uppercase tracking-[0.07em] mb-1">
-                Today · Sep 26
+                Today · {shortDate(todayDate)}
               </p>
               {today.map((p) => <PostRow key={p.id} post={p} />)}
             </>
           )}
 
+          {today.length === 0 && tomorrow.length === 0 && (
+            <p className="text-[14px] text-[#7b7b8b] py-6 text-center">
+              Nothing scheduled for today or tomorrow.{" "}
+              <Link href="/campaigns/new" className="text-[#5849da] font-[600] hover:underline">
+                Plan a campaign
+              </Link>
+            </p>
+          )}
+
           {tomorrow.length > 0 && (
             <>
               <p className="text-[11px] font-[700] text-[#7b7b8b] uppercase tracking-[0.07em] mt-4 mb-1">
-                Tomorrow · Sep 27
+                Tomorrow · {shortDate(addDays(todayDate, 1))}
               </p>
               {tomorrow.map((p) => <PostRow key={p.id} post={p} />)}
             </>

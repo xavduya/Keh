@@ -1,31 +1,31 @@
 /**
- * Next.js middleware — Supabase session refresh
+ * Next.js proxy — Supabase session refresh + optimistic auth redirects
  *
- * Supabase Auth uses short-lived access tokens. This middleware runs on every
- * request that matches the config below and refreshes the session so Server
- * Components always receive a valid user.
+ * Supabase Auth uses short-lived access tokens. This proxy refreshes the
+ * session on every matched request so Server Components always receive a
+ * valid user, then redirects:
+ *   - signed-out visitors away from app routes → /login
+ *   - signed-in users away from /login and /signup → /dashboard
  *
- * Without this, a user whose token expires mid-session would be silently
- * treated as unauthenticated on the next Server Component render.
+ * This is only an optimistic check. The authoritative check is
+ * getCurrentContext() in the (dashboard) layout, and RLS in the database.
  *
  * Docs: https://supabase.com/docs/guides/auth/server-side/nextjs
  */
 
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { publicEnv } from "@/lib/env";
+
+const AUTH_PAGES = ["/login", "/signup"];
+const PUBLIC_PREFIXES = ["/auth/"]; // e.g. /auth/callback
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
-  console.log("Supabase environment check:", {
-    cwd: process.cwd(),
-    hashUrl: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
-    hashKey: Boolean(process.env.NEXT_PUBLIC_PUBLISHABLE_KEY),
-  });
-
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    publicEnv.supabaseUrl,
+    publicEnv.supabasePublishableKey,
     {
       cookies: {
         getAll() {
@@ -48,9 +48,36 @@ export async function proxy(request: NextRequest) {
 
   // Refresh the session — do NOT remove this call.
   // It must come before any auth checks so the session is up to date.
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { pathname } = request.nextUrl;
+  const isAuthPage = AUTH_PAGES.includes(pathname);
+  const isPublic = PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
+
+  if (!user && !isAuthPage && !isPublic) {
+    return redirectWithCookies(request, "/login", supabaseResponse);
+  }
+  if (user && isAuthPage) {
+    return redirectWithCookies(request, "/dashboard", supabaseResponse);
+  }
 
   return supabaseResponse;
+}
+
+/** Redirect while keeping any refreshed session cookies. */
+function redirectWithCookies(
+  request: NextRequest,
+  pathname: string,
+  from: NextResponse
+) {
+  const url = request.nextUrl.clone();
+  url.pathname = pathname;
+  url.search = "";
+  const response = NextResponse.redirect(url);
+  from.cookies.getAll().forEach((cookie) => response.cookies.set(cookie));
+  return response;
 }
 
 export const config = {
@@ -61,8 +88,6 @@ export const config = {
      *  - _next/image   (image optimisation)
      *  - favicon.ico
      *  - public assets
-     *
-     * Add protected-route redirects here in Phase 5 when auth is wired up.
      */
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],

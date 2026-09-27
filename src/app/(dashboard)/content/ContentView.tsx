@@ -9,7 +9,7 @@ import { FilterTabs } from "@/components/ui/filter-tabs";
 import { SocialPlatformBadge } from "@/components/ui/social-platform-badge";
 import { PostStatusBadge } from "@/components/ui/post-status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { timeLabel } from "@/utils";
+import { formatDateKey, manilaDateKey, manilaTime } from "@/utils/datetime";
 import type { EnrichedPost } from "@/types";
 
 const FILTERS = ["All", "Drafts", "Scheduled", "Published", "Top Performing"];
@@ -27,15 +27,17 @@ function filterPosts(posts: EnrichedPost[], filter: string): EnrichedPost[] {
 function ContentCard({ post }: { post: EnrichedPost }) {
   return (
     <article className="bg-white rounded-[12px] border border-[#e9e9ef] overflow-hidden flex flex-col">
-      <div className="relative w-full h-[200px]">
-        <Image
-          src={post.product.imageUrl}
-          alt={post.product.name}
-          fill
-          className="object-cover"
-          sizes="(max-width: 768px) 100vw, 33vw"
-          unoptimized
-        />
+      <div className="relative w-full h-[200px] bg-[#f7f8fb]">
+        {post.product.imageUrl && (
+          <Image
+            src={post.product.imageUrl}
+            alt={post.product.name}
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, 33vw"
+            unoptimized
+          />
+        )}
       </div>
       <div className="p-4 flex flex-col flex-1 gap-2">
         <div className="flex items-center justify-between">
@@ -51,7 +53,7 @@ function ContentCard({ post }: { post: EnrichedPost }) {
         </h3>
         <p className="text-[13px] text-[#7b7b8b]">{post.product.name}</p>
         <p className="text-[12px] text-[#7b7b8b]">
-          {post.scheduledAt.slice(0, 10)} · {timeLabel(post.scheduledAt.slice(11, 16))}
+          {formatDateKey(manilaDateKey(post.scheduledAt), { month: "short", day: "numeric", year: "numeric" })} · {manilaTime(post.scheduledAt)}
         </p>
         <p className="text-[13px] text-[#7b7b8b]">
           {post.reach
@@ -80,7 +82,7 @@ function ContentCard({ post }: { post: EnrichedPost }) {
   );
 }
 
-export function ContentLibrary({ posts }: { posts: EnrichedPost[] }) {
+export function ContentView({ posts }: { posts: EnrichedPost[] }) {
   const [filter, setFilter] = useState("All");
   const filtered = filterPosts(posts, filter);
 

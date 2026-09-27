@@ -54,34 +54,44 @@ export const ProductSchema = z.object({
   aiNotes: z.string().optional(),
 });
 
+/** Campaign wizard draft, validated on the server before saving. */
 export const CampaignDraftSchema = z.object({
-  goal: CampaignGoalSchema.or(z.literal("")),
+  goal: z.enum(CampaignGoalSchema.options, { error: "Choose a goal" }),
   productId: z.string().min(1, "Select a product"),
-  promotion: z.string().default(""),
-  duration: z.string().default(""),
-  instructions: z.string().default(""),
-  scheduledDate: z.string().min(1, "Choose a date"),
-  scheduledTime: z.string().min(1, "Choose a time"),
-  platforms: z
-    .array(PlatformSchema)
-    .min(1, "Choose at least one platform"),
-  captions: z.record(z.string(), z.string()),
+  promotion: z.string().trim().max(120).default(""),
+  duration: z.string().trim().max(120).default(""),
+  instructions: z.string().trim().max(1000).default(""),
+  scheduledDate: z.union([z.literal(""), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a date")]),
+  scheduledTime: z.union([z.literal(""), z.string().regex(/^\d{2}:\d{2}$/, "Choose a time")]),
+  platforms: z.array(PlatformSchema).min(1, "Choose at least one platform"),
+  captions: z.partialRecord(PlatformSchema, z.string().trim().max(2200)),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Form schemas  (subset of domain schemas, used for react-hook-form + Zod)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const ProductFormSchema = ProductSchema.pick({
-  name: true,
-  description: true,
-  price: true,
-  promoPrice: true,
-  category: true,
-  availability: true,
-  aiNotes: true,
-}).extend({
-  productUrl: z.string().url("Enter a valid URL").optional().or(z.literal("")),
+/** Empty form inputs arrive as "" — treat them as "not provided". */
+const emptyToUndefined = (v: unknown) => (v === "" || v === null ? undefined : v);
+
+/** Product add/edit form. Parses raw FormData values (all strings). */
+export const ProductFormSchema = z.object({
+  name: z.string().trim().min(1, "Product name is required").max(120),
+  description: z.string().trim().max(1000).default(""),
+  price: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number({ error: "Enter a price" }).min(0, "Price can't be negative")
+  ),
+  promoPrice: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().min(0, "Promo price can't be negative").optional()
+  ),
+  category: z.string().trim().max(60).default(""),
+  availability: z.enum(["ACTIVE", "UNAVAILABLE"]).default("ACTIVE"),
+  aiNotes: z.string().trim().max(1000).default(""),
+  productUrl: z
+    .union([z.literal(""), z.url({ error: "Enter a valid URL, e.g. https://…" })])
+    .default(""),
 });
 
 export type ProductFormValues = z.infer<typeof ProductFormSchema>;
