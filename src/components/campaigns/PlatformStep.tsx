@@ -14,8 +14,13 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   TIKTOK: "TikTok",
 };
 
+/** Product photos uploaded before JPG conversion may be PNG/WebP/GIF. */
+function isJpgPhoto(url: string): boolean {
+  return /\.jpe?g$/i.test(url.split("?")[0]);
+}
+
 export function PlatformStep() {
-  const { draft, setDraft, nextStep, prevStep, aiUpdatedFields, business } = useCampaign();
+  const { draft, setDraft, nextStep, prevStep, aiUpdatedFields, business, product } = useCampaign();
 
   function togglePlatform(p: Platform, checked: boolean) {
     const next = checked
@@ -87,6 +92,14 @@ export function PlatformStep() {
           ? "Facebook and Instagram posts are published for you when those accounts are connected."
           : "Posting to Facebook and Instagram isn't switched on yet — posts are saved to your calendar."}
       </HintBox>
+
+      {business.publishingEnabled && draft.platforms.includes("INSTAGRAM") && product && !isJpgPhoto(product.imageUrl) && (
+        <p role="alert" className="text-[13px] text-[#a6721d] bg-[#fff3df] rounded-lg px-3 py-2">
+          {product.imageUrl
+            ? `Instagram needs a JPG photo, and ${product.name}'s photo isn't one. Upload it again in Products (Keh converts it for you).`
+            : `Instagram posts need a photo. Add one to ${product.name} in Products.`}
+        </p>
+      )}
 
       {draft.platforms.length === 0 && (
         <p className="text-[13px] text-[#b54b4b]">Choose at least one platform to continue.</p>

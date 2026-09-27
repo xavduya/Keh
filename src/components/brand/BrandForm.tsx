@@ -1,12 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import { startTransition, useActionState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { TONE_LABELS, LANGUAGE_LABELS, DEFAULT_CTA_LABELS } from "@/constants";
 import { saveBrandProfile } from "@/app/(dashboard)/brand/actions";
 import type { Business, BrandProfile } from "@/types";
+import { BRAND_IMAGE, prepareImage, setInputFile } from "@/utils/image";
 
 const inputClass =
   "px-3 py-2 border border-brand-line rounded-lg text-[14px] bg-white focus-visible:outline-2 focus-visible:outline-brand aria-invalid:border-destructive";
@@ -99,8 +100,25 @@ function ImageInput({
   currentUrl?: string;
   errors: FieldErrors;
 }) {
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  // Resize (keeping transparency) before upload, so the form stays small.
+  async function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+    setLocalError(null);
+    try {
+      setInputFile(input, await prepareImage(file, BRAND_IMAGE));
+    } catch (err) {
+      console.warn("Couldn't prepare image", err);
+      input.value = "";
+      setLocalError("We couldn't read that image. Try a PNG or JPG.");
+    }
+  }
+
   return (
-    <Field label={label} name={name} errors={errors}>
+    <Field label={label} name={name} errors={localError ? { ...errors, [name]: [localError] } : errors}>
       {currentUrl && (
         <span className="relative w-16 h-16 rounded-lg overflow-hidden border border-brand-line bg-brand-bg">
           <Image src={currentUrl} alt="" fill className="object-cover" sizes="64px" unoptimized />
@@ -109,7 +127,8 @@ function ImageInput({
       <input
         name={name}
         type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif"
+        accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif"
+        onChange={handleChange}
         className="text-[13px] text-brand-muted"
         {...invalid(errors, name)}
       />

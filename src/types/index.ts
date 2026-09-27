@@ -110,6 +110,8 @@ export interface Business {
   /** Age group of the primary audience e.g. "18–35" */
   audienceAgeGroup?: string;
   audienceInterests?: string;
+  /** Finished (or skipped) the guided setup after sign-up. */
+  onboarded: boolean;
   createdAt: string;
 }
 
