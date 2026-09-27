@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { startTransition, useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import type { AuthFormState } from "@/app/(auth)/actions";
 
@@ -22,8 +22,17 @@ interface AuthFormProps {
 export function AuthForm({ action, fields, submitLabel, pendingLabel }: AuthFormProps) {
   const [state, formAction, pending] = useActionState(action, undefined);
 
+  // Submit via a transition instead of <form action>: React resets
+  // action-driven forms after every submit, which would wipe the user's
+  // input whenever validation fails.
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    startTransition(() => formAction(formData));
+  }
+
   return (
-    <form action={formAction} className="space-y-4" noValidate>
+    <form onSubmit={handleSubmit} className="space-y-4" noValidate>
       {fields.map((field) => {
         const errors = state?.fieldErrors?.[field.name];
         const errorId = `${field.name}-error`;
