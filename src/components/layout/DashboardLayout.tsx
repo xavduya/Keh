@@ -5,9 +5,11 @@ import { AppSidebar } from "./AppSidebar";
 import { TopBar } from "./TopBar";
 import { initials } from "@/utils";
 import { MarketingManagerCopilot } from "@/components/assistant/MarketingManagerCopilot";
+import { LiveRefresh } from "./LiveRefresh";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
+  businessId: string;
   businessName: string;
   businessLocation: string;
   userName: string;
@@ -16,6 +18,7 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({
   children,
+  businessId,
   businessName,
   businessLocation,
   userName,
@@ -26,6 +29,7 @@ export function DashboardLayout({
 
   return (
     <div className="flex h-full min-h-screen bg-[#f7f8fb]">
+      <LiveRefresh businessId={businessId} />
       <AppSidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
