@@ -16,7 +16,46 @@ A few things are **broken today**, even with mock data:
 
 The biggest planning risk is **sequencing**. The current roadmap lists Phase 3b (mock-only interactions) next. Most of that work would be thrown away once Supabase is connected, so we recommend doing the real data work first.
 
-**Recommended next task:** Connect Supabase Auth end to end and replace the hard-coded demo business with the signed-in user's business. Details are at the [end of this document](#what-to-do-next).
+**Recommended next task (updated 2026-09-27):** make the brand profile editable, then generate captions with AI. See [Progress](#progress-since-the-audit) and [What to do next](#what-to-do-next).
+
+---
+
+## Progress since the audit
+
+> **Updated:** 2026-09-27 · branches `feat/login` and `feat/products` (not yet merged to `main`)
+
+The core loop now works end to end on Supabase: **sign up → add a product → create a campaign → it appears in Campaigns, Calendar, Content and the Dashboard.**
+
+| Gap | Status | What changed |
+|---|---|---|
+| G1 `/campaigns` 404 | ✅ Fixed | A teammate added the `/campaigns` list page (now on real data). |
+| G2 Times 8 hours off | ✅ Fixed | `src/utils/datetime.ts` (Manila-time helpers) replaces ISO string slicing in the dashboard, calendar, content and campaigns pages. |
+| G3 Env keys / clients | ✅ Fixed | `src/lib/env.ts` validates the env vars; the clients use the publishable/secret keys and are typed; `.env.example` added. |
+| G4 Proxy | ✅ Fixed | Debug log removed; redirects signed-out users to `/login` and signed-in users away from the auth pages. |
+| G5 Mobile drawer | ✅ Fixed | Closes on navigation and on Escape. |
+| G6 Saving campaigns | ✅ Fixed | `saveCampaign` Server Action + `createCampaignWithPosts`; Schedule / Publish now / Save draft all save. No live publishing yet (see G24). |
+| G7 Wizard correctness | 🟡 Mostly | Captions use the real business, brand tone/language/CTA and product, and regenerate when inputs change. Still template text, not AI. |
+| G8 Validation | 🟡 Mostly | Product, campaign and auth forms are validated server-side with Zod. The brand form isn't wired yet. |
+| G9 Server pages | 🟡 Mostly | Dashboard, campaigns, wizard, calendar, content and products are server pages feeding client views. Analytics, assistant, brand, social accounts and subscription are still mock client pages. |
+| G10 Demo identity | 🟡 Mostly | Real user and business everywhere in the shell and wizard. The dashboard's recommendation card and stat cards are still mock ("Matcha Latte"). |
+| G11 Auth | ✅ Fixed | Email/password login, sign-up (with business name), sign-out, and the email-confirmation callback. No onboarding flow beyond sign-up. |
+| G12 Products | ✅ Fixed | Add/edit with photo upload (Storage), availability badge, empty state. **Migration 008 must be applied for photo uploads.** No delete yet. |
+| G13 Supabase setup | 🟡 Partly | Seed moved out of `migrations/`; migrations 001–005 and 007 applied. Still no `supabase/config.toml` or generated types. |
+| G14 DB security | 🟡 Partly | (a) `search_path` pinned, (b) cross-business product checks, (c) OAuth token columns hidden from users — all in migration 007. (d) RLS performance not done. |
+| G16 Empty states / errors | 🟡 Partly | Real-data pages handle "no products / no posts". No `error.tsx` / `loading.tsx` yet; mock pages still crash-prone. |
+| G15, G17–G24 | ⏳ Open | Unchanged. |
+
+**New gaps found while building:**
+
+- **Migrations weren't applied** to the Supabase project in `.env` when this work started, despite the earlier commit message. They are now (001–005, 007); 008 is pending.
+- **Metrics:** real posts always have `reach = 0` until a metrics pipeline exists, so the dashboard stats and "Top Performing" filter can't be real yet.
+- **No edit/delete** for campaigns or products.
+
+---
+
+## Original audit (2026-09-27, commit `ae2231b`)
+
+Everything below describes the code **as audited**, before the fixes above. Use the Progress table for current status.
 
 ### How to read this document
 
@@ -382,24 +421,25 @@ G14c token storage → G23 AI with usage limits → G24 publishing jobs and soci
 
 ## What to do next
 
-**Connect Supabase Auth end to end and replace the hard-coded demo business with the signed-in user's business (G11 + G10). Start with the 30-minute fix to the environment variables and clients (G3).**
+> Updated 2026-09-27. The original recommendation (auth + real business context) is done — see [Progress](#progress-since-the-audit).
 
-**Why it comes first.** Every core feature (products, campaigns, saving the brand profile) needs a signed-in user, because the database's security rules check the user on every read and write. The schema, security rules and sign-up trigger already exist, so this is the smallest step from prototype to a real app. It's also the root of the dependency tree: G10, G9, G12 and G6 all wait on it.
+**First, a 2-minute setup step:** apply `supabase/migrations/008_product_images.sql` in the Supabase SQL editor, or product photo uploads will fail.
 
-**Files likely involved:**
-- `.env`, a new `.env.example`, and a new `src/lib/env.ts`
-- `src/lib/supabase/client.ts` and `server.ts`, typed with a regenerated `Database`
-- `src/proxy.ts`: remove the debug log, redirect to login on protected routes
-- New `src/app/(auth)/login` and `src/app/(auth)/signup` pages with Server Actions
-- A new `getCurrentContext()` helper, e.g. `src/lib/auth/context.ts`
-- `src/app/(dashboard)/layout.tsx` and `dashboard/page.tsx`: drop `DEMO_BUSINESS_ID`
-- `src/services/business.service.ts`: the first service backed by real Supabase queries
-- `AppSidebar.tsx` and `TopBar.tsx`: the real user's name and initials, plus sign out
+**Next task: make the brand profile editable, then generate captions with AI.**
 
-**Expected outcome:**
-- You sign up, and the trigger creates the profile, the "My Business" business and a free subscription.
-- You land on the dashboard, and the sidebar shows the business from the database and your own name.
-- Signed-out visitors are redirected to login.
-- A second account can't see the first account's data.
+**Why this order.** The core loop works, but the product's promise is "the AI handles the marketing". Right now captions are template strings. AI captions are the biggest remaining gap between the demo and the pitch. They need good inputs, and the brand page (tone, language, call to action, audience) is still a mock form that doesn't save — so the AI would be writing from defaults.
 
-**Right after that:** G9 (turn the pages into server pages with small client components, starting with Products), then G12 (product create/edit with image upload). That is the first real write path, and campaign saving (G6) is built on the same pattern.
+**1. Brand profile save (small).**
+- `src/app/(dashboard)/brand/`: server page + client form, following the `products/` pattern.
+- `business.service.ts`: `updateBusiness` and `updateBrandProfile`.
+- `BrandFormSchema` in `lib/validation/schemas.ts`: align field names with the form (see G8) and use the enums for tone, language and CTA.
+- Outcome: the wizard's captions and hints reflect what the owner saved.
+
+**2. AI captions (medium).**
+- Implement `generateCampaign()` in `lib/ai/ai.service.ts` (server-only), called from a Server Action.
+- Input: business, brand profile, product, goal, promotion, instructions, platforms. Output: one caption per platform, validated with Zod.
+- Replace `buildCaptions` in `CampaignContext.tsx`; keep the template as a fallback when the API fails.
+- Count usage against `subscriptions.ai_campaigns_used` so the free tier limit means something.
+- Needs a decision on the AI provider and an API key in `.env`.
+
+**Then:** demo polish — hide or disable unwired controls (G19), replace the dashboard's hard-coded recommendation card, add `error.tsx` / `loading.tsx` (G16), and product/campaign delete.
