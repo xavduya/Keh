@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AppSidebar } from "./AppSidebar";
 import { TopBar } from "./TopBar";
 import { initials } from "@/utils";
+import { MarketingManagerCopilot } from "@/components/assistant/MarketingManagerCopilot";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -52,6 +53,11 @@ export function DashboardLayout({
           </span>
         </footer>
       </div>
+
+      <MarketingManagerCopilot
+        businessName={businessName}
+        businessLocation={businessLocation}
+      />
     </div>
   );
 }

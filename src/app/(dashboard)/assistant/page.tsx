@@ -17,7 +17,7 @@ export default async function AssistantPage() {
       recommendations={recommendations}
       learnings={learnings}
       business={business}
-      firstProduct={products[0] ?? null}
+      productCount={products.length}
     />
   );
 }

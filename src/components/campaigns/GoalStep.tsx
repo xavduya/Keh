@@ -22,7 +22,15 @@ const GOAL_ICONS: Record<CampaignGoal, React.ComponentType<{ size?: number; clas
 };
 
 export function GoalStep() {
-  const { draft, setDraft, nextStep, products, business, product } = useCampaign();
+  const {
+    draft,
+    setDraft,
+    nextStep,
+    products,
+    business,
+    product,
+    aiUpdatedFields,
+  } = useCampaign();
 
   return (
     <div className="space-y-6">
@@ -40,19 +48,25 @@ export function GoalStep() {
         {CAMPAIGN_GOALS.map((g) => {
           const Icon = GOAL_ICONS[g.value];
           const isSelected = draft.goal === g.value;
+          const isAiPicked = isSelected && aiUpdatedFields.includes("goal");
           return (
             <button
               key={g.value}
               onClick={() => setDraft({ goal: g.value })}
               className={[
-                "flex items-center gap-3 px-4 py-4 rounded-[10px] border-2 text-left transition-colors",
+                "flex items-center gap-3 px-4 py-4 rounded-[10px] border-2 text-left transition-colors relative",
                 isSelected
                   ? "border-[#5849da] bg-[#f0edff] text-[#5849da]"
                   : "border-[#e9e9ef] bg-white text-[#262535] hover:border-[#c5bdf5] hover:bg-[#fafafa]",
               ].join(" ")}
             >
               <Icon size={18} className="shrink-0" />
-              <span className="text-[14px] font-[600]">{g.label}</span>
+              <span className="text-[14px] font-[600] flex-1">{g.label}</span>
+              {isAiPicked && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-[#5849da] px-1.5 py-0.5 text-[9px] font-[700] text-white">
+                  <Sparkles size={9} /> AI
+                </span>
+              )}
             </button>
           );
         })}
@@ -81,12 +95,13 @@ export function GoalStep() {
           )}
           {products.map((p) => {
             const isSelected = draft.productId === p.id;
+            const isAiPicked = isSelected && aiUpdatedFields.includes("productId");
             return (
               <button
                 key={p.id}
                 onClick={() => setDraft({ productId: p.id })}
                 className={[
-                  "flex items-center gap-3 px-4 py-3 rounded-[10px] border-2 text-left transition-colors",
+                  "flex items-center gap-3 px-4 py-3 rounded-[10px] border-2 text-left transition-colors relative",
                   isSelected
                     ? "border-[#5849da] bg-[#f0edff]"
                     : "border-[#e9e9ef] bg-white hover:border-[#c5bdf5]",
@@ -97,10 +112,17 @@ export function GoalStep() {
                     <Image src={p.imageUrl} alt="" fill className="object-cover" sizes="40px" unoptimized />
                   )}
                 </div>
-                <div>
-                  <p className={["text-[14px] font-[600]", isSelected ? "text-[#5849da]" : "text-[#262535]"].join(" ")}>
-                    {p.name}
-                  </p>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-1">
+                    <p className={["text-[14px] font-[600] truncate", isSelected ? "text-[#5849da]" : "text-[#262535]"].join(" ")}>
+                      {p.name}
+                    </p>
+                    {isAiPicked && (
+                      <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-[#5849da] px-1.5 py-0.5 text-[9px] font-[700] text-white">
+                        <Sparkles size={9} /> AI
+                      </span>
+                    )}
+                  </div>
                   <p className="text-[12px] text-[#7b7b8b]">{formatPrice(p.price)}</p>
                 </div>
               </button>
@@ -112,28 +134,61 @@ export function GoalStep() {
       {/* Details */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-[600] text-[#262535]">Promotion</span>
+          <span className="text-[13px] font-[600] text-[#262535] flex items-center justify-between">
+            <span>Promotion</span>
+            {aiUpdatedFields.includes("promotion") && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-[700] text-[#5849da]">
+                <Sparkles size={11} /> AI Filled
+              </span>
+            )}
+          </span>
           <input
             value={draft.promotion}
             onChange={(e) => setDraft({ promotion: e.target.value })}
-            className="px-3 py-2 border border-[#e9e9ef] rounded-[8px] text-[14px] bg-white focus:outline-none focus:border-[#5849da] transition-colors"
+            className={`px-3 py-2 border rounded-[8px] text-[14px] focus:outline-none focus:border-[#5849da] transition-colors ${
+              aiUpdatedFields.includes("promotion")
+                ? "border-[#a499ed] bg-[#fcfbfe] ring-1 ring-[#5849da]/20"
+                : "border-[#e9e9ef] bg-white"
+            }`}
           />
         </label>
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-[600] text-[#262535]">Campaign duration</span>
+          <span className="text-[13px] font-[600] text-[#262535] flex items-center justify-between">
+            <span>Campaign duration</span>
+            {aiUpdatedFields.includes("duration") && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-[700] text-[#5849da]">
+                <Sparkles size={11} /> AI Filled
+              </span>
+            )}
+          </span>
           <input
             value={draft.duration}
             onChange={(e) => setDraft({ duration: e.target.value })}
-            className="px-3 py-2 border border-[#e9e9ef] rounded-[8px] text-[14px] bg-white focus:outline-none focus:border-[#5849da] transition-colors"
+            className={`px-3 py-2 border rounded-[8px] text-[14px] focus:outline-none focus:border-[#5849da] transition-colors ${
+              aiUpdatedFields.includes("duration")
+                ? "border-[#a499ed] bg-[#fcfbfe] ring-1 ring-[#5849da]/20"
+                : "border-[#e9e9ef] bg-white"
+            }`}
           />
         </label>
         <label className="flex flex-col gap-1.5 sm:col-span-2">
-          <span className="text-[13px] font-[600] text-[#262535]">Additional instructions</span>
+          <span className="text-[13px] font-[600] text-[#262535] flex items-center justify-between">
+            <span>Additional instructions</span>
+            {aiUpdatedFields.includes("instructions") && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-[700] text-[#5849da]">
+                <Sparkles size={11} /> AI Filled
+              </span>
+            )}
+          </span>
           <textarea
             value={draft.instructions}
             onChange={(e) => setDraft({ instructions: e.target.value })}
             rows={3}
-            className="px-3 py-2 border border-[#e9e9ef] rounded-[8px] text-[14px] bg-white focus:outline-none focus:border-[#5849da] transition-colors resize-y"
+            className={`px-3 py-2 border rounded-[8px] text-[14px] focus:outline-none focus:border-[#5849da] transition-colors resize-y ${
+              aiUpdatedFields.includes("instructions")
+                ? "border-[#a499ed] bg-[#fcfbfe] ring-1 ring-[#5849da]/20"
+                : "border-[#e9e9ef] bg-white"
+            }`}
           />
         </label>
       </div>

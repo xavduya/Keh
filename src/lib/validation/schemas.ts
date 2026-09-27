@@ -67,6 +67,87 @@ export const CampaignDraftSchema = z.object({
   captions: z.partialRecord(PlatformSchema, z.string().trim().max(2200)),
 });
 
+export const FieldChangeSchema = z.object({
+  field: z.string(),
+  label: z.string(),
+  oldValue: z.union([z.string(), z.array(z.string()), z.null()]).optional(),
+  newValue: z.union([z.string(), z.array(z.string())]),
+  reason: z.string(),
+});
+
+export const MarketingCampaignActionSchema = z.object({
+  type: z.enum(["FILL_FIELDS", "UPDATE_CAPTIONS", "NAVIGATE_STEP", "SUGGEST_IDEAS"]),
+  summary: z.string(),
+  draftUpdates: z
+    .object({
+      goal: z.union([CampaignGoalSchema, z.literal("")]).optional(),
+      productId: z.string().optional(),
+      promotion: z.string().optional(),
+      duration: z.string().optional(),
+      instructions: z.string().optional(),
+      scheduledDate: z.string().optional(),
+      scheduledTime: z.string().optional(),
+      platforms: z.array(PlatformSchema).optional(),
+      captions: z.partialRecord(PlatformSchema, z.string()).optional(),
+    })
+    .optional(),
+  suggestedStep: z.number().int().min(0).max(4).optional(),
+  changes: z.array(FieldChangeSchema),
+});
+
+export const MarketingIdeaSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  category: z.enum(["PROMOTION", "PRODUCT_SPOTLIGHT", "ENGAGEMENT", "SEASONAL", "ANNOUNCEMENT"]),
+  summary: z.string(),
+  hook: z.string(),
+  suggestedGoal: CampaignGoalSchema,
+  suggestedProductId: z.string().optional(),
+  suggestedProductName: z.string().optional(),
+  suggestedPromotion: z.string().optional(),
+  suggestedDuration: z.string().optional(),
+  suggestedPlatforms: z.array(PlatformSchema),
+  suggestedDate: z.string().optional(),
+  suggestedTime: z.string().optional(),
+  captionPreview: z.string().optional(),
+});
+
+export const MarketingAssistantRequestSchema = z.object({
+  question: z.string().trim().min(1, "Ask Keh a question").max(1200),
+  history: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().trim().min(1).max(2000),
+      })
+    )
+    .max(8)
+    .default([]),
+  currentDraft: z
+    .object({
+      goal: z.union([CampaignGoalSchema, z.literal("")]).optional(),
+      productId: z.string().optional(),
+      promotion: z.string().optional(),
+      duration: z.string().optional(),
+      instructions: z.string().optional(),
+      scheduledDate: z.string().optional(),
+      scheduledTime: z.string().optional(),
+      platforms: z.array(PlatformSchema).optional(),
+      captions: z.partialRecord(PlatformSchema, z.string()).optional(),
+    })
+    .optional(),
+  currentStep: z.number().int().min(0).max(4).optional(),
+  actionIntent: z.enum(["chat", "ideas", "fill", "captions", "schedule"]).optional(),
+});
+
+export const MarketingAssistantResponseSchema = z.object({
+  answer: z.string(),
+  mode: z.enum(["openai", "guided"]),
+  action: MarketingCampaignActionSchema.optional(),
+  ideas: z.array(MarketingIdeaSchema).optional(),
+});
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Form schemas  (subset of domain schemas, used for react-hook-form + Zod)
 // ─────────────────────────────────────────────────────────────────────────────

@@ -326,3 +326,48 @@ export interface CampaignDraft {
   /** ID of the post being edited; null for new */
   editId: string | null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Marketing Manager AI & In-Website Control Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface FieldChangeNotification {
+  field: string;
+  label: string;
+  previousValue?: string | string[] | null;
+  newValue: string | string[];
+  reason: string;
+}
+
+export interface MarketingCampaignAction {
+  type: "FILL_FIELDS" | "UPDATE_CAPTIONS" | "NAVIGATE_STEP" | "SUGGEST_IDEAS";
+  summary: string;
+  draftUpdates?: Partial<CampaignDraft>;
+  suggestedStep?: number;
+  changes: FieldChangeNotification[];
+}
+
+export interface MarketingIdea {
+  id: string;
+  title: string;
+  category: "PROMOTION" | "PRODUCT_SPOTLIGHT" | "ENGAGEMENT" | "SEASONAL" | "ANNOUNCEMENT";
+  summary: string;
+  hook: string;
+  suggestedGoal: CampaignGoal;
+  suggestedProductId?: string;
+  suggestedProductName?: string;
+  suggestedPromotion?: string;
+  suggestedDuration?: string;
+  suggestedPlatforms: Platform[];
+  suggestedDate?: string;
+  suggestedTime?: string;
+  captionPreview?: string;
+}
+
+export interface AIUpdateRecord {
+  timestamp: number;
+  summary: string;
+  changes: FieldChangeNotification[];
+  previousDraft?: CampaignDraft;
+}
+
