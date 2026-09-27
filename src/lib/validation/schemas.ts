@@ -96,24 +96,33 @@ export const ProductFormSchema = z.object({
 
 export type ProductFormValues = z.infer<typeof ProductFormSchema>;
 
+/** Brand profile form (business details + brand voice). Parses raw FormData. */
 export const BrandFormSchema = z.object({
-  name: z.string().min(1, "Business name is required"),
-  description: z.string().default(""),
-  industry: z.string().default(""),
-  location: z.string().default(""),
-  operatingHours: z.string().default(""),
-  phone: z.string().default(""),
-  website: z.string().url("Enter a valid URL").optional().or(z.literal("")),
-  delivery: z.string().default(""),
-  payment: z.string().default(""),
-  targetAudience: z.string().default(""),
-  audienceAgeGroup: z.string().default(""),
-  audienceInterests: z.string().default(""),
-  tone: z.string().default("FRIENDLY"),
-  preferredLanguage: z.string().default("TAGLISH"),
-  defaultCTA: z.string().default("MESSAGE_US"),
-  brandColor: z.string().default("#5849da"),
-  brandGuidelines: z.string().default(""),
+  // Business information
+  name: z.string().trim().min(1, "Business name is required").max(120),
+  description: z.string().trim().max(1000).default(""),
+  industry: z.string().trim().max(120).default(""),
+  location: z.string().trim().max(120).default(""),
+  operatingHours: z.string().trim().max(120).default(""),
+  phone: z.string().trim().max(40).default(""),
+  website: z
+    .union([z.literal(""), z.url({ error: "Enter a valid URL, e.g. https://…" })])
+    .default(""),
+  delivery: z.string().trim().max(200).default(""),
+  payment: z.string().trim().max(200).default(""),
+  // Audience
+  targetAudience: z.string().trim().max(200).default(""),
+  audienceAgeGroup: z.string().trim().max(60).default(""),
+  audienceInterests: z.string().trim().max(200).default(""),
+  // Brand voice & identity
+  tone: z.enum(["FRIENDLY", "PROFESSIONAL", "CASUAL", "ENERGETIC", "PREMIUM", "FUNNY", "INFORMATIVE"]),
+  preferredLanguage: z.enum(["ENGLISH", "FILIPINO", "TAGLISH", "CEBUANO", "MIXED"]),
+  defaultCTA: z.enum(["MESSAGE_US", "VISIT_STORE", "ORDER_NOW", "BOOK_NOW", "LEARN_MORE"]),
+  brandColor: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Pick a color")
+    .default("#5849da"),
+  brandGuidelines: z.string().trim().max(2000).default(""),
 });
 
 export type BrandFormValues = z.infer<typeof BrandFormSchema>;
