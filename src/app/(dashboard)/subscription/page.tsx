@@ -1,11 +1,13 @@
 import { Check } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { HintBox } from "@/components/ui/hint-box";
-import { mockSubscription } from "@/data/mock-business";
+import { getSubscription } from "@/services/business.service";
 import { SUBSCRIPTION_PLANS } from "@/constants";
+import { getCurrentContext } from "@/lib/auth/context";
+
 
 function ProgressBar({ used, limit }: { used: number; limit: number }) {
-  const pct = Math.round((used / limit) * 100);
+  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
   return (
     <div className="w-full h-2 bg-[#e9e9ef] rounded-full overflow-hidden">
       <div
@@ -16,8 +18,10 @@ function ProgressBar({ used, limit }: { used: number; limit: number }) {
   );
 }
 
-export default function SubscriptionPage() {
-  const sub = mockSubscription;
+export default async function SubscriptionPage() {
+  const { business } = await getCurrentContext();
+  const sub = await getSubscription(business.id);
+  if (!sub) return null;
   const plan = SUBSCRIPTION_PLANS.find((p) => p.id === sub.plan) ?? SUBSCRIPTION_PLANS[1];
   const { usage } = sub;
 
