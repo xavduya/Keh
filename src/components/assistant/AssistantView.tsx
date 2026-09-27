@@ -112,7 +112,7 @@ export function AssistantView({
               </div>
               <span className="hidden shrink-0 items-center gap-1.5 rounded-full bg-[#f7f8fb] px-2.5 py-1 text-[11px] font-[600] text-[#626274] sm:inline-flex">
                 <span className="h-1.5 w-1.5 rounded-full bg-[#31a56d]" />
-                {assistantMode === "openai"
+                {assistantMode === "ai"
                   ? "AI advisor connected"
                   : assistantMode === "guided"
                     ? "Guided marketing manager"

@@ -142,7 +142,7 @@ export const MarketingAssistantRequestSchema = z.object({
 
 export const MarketingAssistantResponseSchema = z.object({
   answer: z.string(),
-  mode: z.enum(["openai", "guided"]),
+  mode: z.enum(["ai", "guided"]),
   action: MarketingCampaignActionSchema.optional(),
   ideas: z.array(MarketingIdeaSchema).optional(),
 });

@@ -134,6 +134,10 @@ export async function POST(request: Request) {
             }
           : null,
       slot: recommendedSlot(found),
+      recentCaptions: [...posts]
+        .sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt))
+        .slice(0, 5)
+        .map((post) => post.caption.slice(0, 280)),
     });
 
     return NextResponse.json(advice);
