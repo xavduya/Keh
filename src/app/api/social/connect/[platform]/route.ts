@@ -41,11 +41,7 @@ export async function GET(
   await getCurrentContext();
 
   if (!isMetaConfigured()) {
-    return NextResponse.redirect(
-      `${origin}/social-accounts?error=${encodeURIComponent(
-        "Facebook and Instagram connections aren't set up yet (missing Meta app credentials)."
-      )}`
-    );
+    return NextResponse.redirect(`${origin}/social-accounts?error=not_configured`);
   }
   const { appId } = getMetaCredentials();
 

@@ -40,6 +40,9 @@ export async function saveCampaign(
   if (!product || product.businessId !== business.id) {
     return { error: "That product no longer exists. Pick another one." };
   }
+  if (product.availability !== "ACTIVE") {
+    return { error: `${product.name} isn't available right now. Pick another product.` };
+  }
 
   const missingCaption = platforms.find((p) => !data.captions[p]);
   if (missingCaption) {

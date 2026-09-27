@@ -22,6 +22,7 @@ import { getCurrentContext } from "@/lib/auth/context";
 import { getMetaCredentials } from "@/lib/env";
 import { upsertSocialAccount } from "@/services/social-account.service";
 import { OAUTH_COOKIE, verifyOAuthState } from "@/lib/social/oauth-state";
+import type { ConnectErrorCode } from "@/lib/social/connect-errors";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Meta Graph API helpers
@@ -108,13 +109,7 @@ async function getLinkedInstagramAccount(
 // Route handler
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Owner-facing messages; Meta's raw error details only go to the server log. */
-const MESSAGES = {
-  cancelled: "The connection was cancelled on Facebook.",
-  expired: "That connection link expired or didn't come from this browser. Please try connecting again.",
-  failed: "We couldn't finish connecting. Please try again.",
-};
-
+// Owner-facing messages live in CONNECT_ERRORS; Meta's raw error details only go to the server log.
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const redirectTo = (url: string) => {
@@ -123,17 +118,17 @@ export async function GET(request: NextRequest) {
     return response;
   };
   const success = () => redirectTo(`${origin}/social-accounts?connected=1`);
-  const failure = (msg: string) => redirectTo(`${origin}/social-accounts?error=${encodeURIComponent(msg)}`);
+  const failure = (code: ConnectErrorCode) => redirectTo(`${origin}/social-accounts?error=${code}`);
 
   if (searchParams.get("error")) {
     console.warn("Meta OAuth returned an error:", searchParams.get("error_description") ?? searchParams.get("error"));
-    return failure(MESSAGES.cancelled);
+    return failure("cancelled");
   }
 
   // CSRF: the state must carry the nonce this browser was given.
   const state = verifyOAuthState(searchParams.get("state"), request.cookies.get(OAUTH_COOKIE)?.value);
   const code = searchParams.get("code");
-  if (!state || !code) return failure(MESSAGES.expired);
+  if (!state || !code) return failure("expired");
 
   // Must be signed in; the account is saved to *their* business.
   let businessId: string;
@@ -151,17 +146,13 @@ export async function GET(request: NextRequest) {
     const { access_token: shortLived } = await exchangeCodeForToken(code, redirectUri, appId, appSecret);
 
     // 2. Upgrade to long-lived token (~60 days)
-    const { access_token: longLived, expires_in } = await exchangeForLongLivedToken(shortLived, appId, appSecret);
-    const tokenExpiresAt = expires_in ? new Date(Date.now() + expires_in * 1000).toISOString() : undefined;
+    // Only used to fetch the Page; the Page token saved below doesn't expire.
+    const { access_token: longLived } = await exchangeForLongLivedToken(shortLived, appId, appSecret);
 
     // 3. The managed Page (Instagram Business accounts hang off a Page too)
     const page = await getFirstPage(longLived);
     if (!page) {
-      return failure(
-        state.platform === "FACEBOOK"
-          ? "No Facebook Page found. Make sure you manage at least one Page."
-          : "No Facebook Page found. Instagram Business accounts need a linked Facebook Page."
-      );
+      return failure(state.platform === "FACEBOOK" ? "no_page_facebook" : "no_page_instagram");
     }
 
     if (state.platform === "FACEBOOK") {
@@ -169,28 +160,25 @@ export async function GET(request: NextRequest) {
         platform: "FACEBOOK",
         accountId: page.id,
         accountName: page.name,
-        accessToken: page.access_token, // page token, doesn't expire
-        tokenExpiresAt,
+        // A Page token derived from a long-lived user token doesn't expire.
+        accessToken: page.access_token,
       });
     } else {
       const igAccount = await getLinkedInstagramAccount(page.id, page.access_token);
       if (!igAccount) {
-        return failure(
-          "No Instagram Business account is linked to your Page. Go to your Facebook Page Settings → Instagram to link it."
-        );
+        return failure("no_instagram");
       }
       await upsertSocialAccount(businessId, {
         platform: "INSTAGRAM",
         accountId: igAccount.id,
         accountName: `@${igAccount.username}`,
         accessToken: page.access_token, // page token is used for IG Content Publishing API
-        tokenExpiresAt,
       });
     }
 
     return success();
   } catch (err) {
     console.error("Meta OAuth callback failed", err);
-    return failure(MESSAGES.failed);
+    return failure("failed");
   }
 }

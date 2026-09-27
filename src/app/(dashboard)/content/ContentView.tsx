@@ -61,15 +61,12 @@ function ContentCard({ post }: { post: EnrichedPost }) {
             : "Performance available after publishing"}
         </p>
         <div className="flex gap-2 mt-auto pt-2 flex-wrap">
-          <button className="px-3 py-1.5 rounded-[7px] border border-[#e9e9ef] text-[13px] font-[500] hover:bg-[#f7f8fb] transition-colors">
-            Reuse
-          </button>
-          <button className="px-3 py-1.5 rounded-[7px] border border-[#e9e9ef] text-[13px] font-[500] hover:bg-[#f7f8fb] transition-colors">
-            Duplicate
-          </button>
-          <button className="px-3 py-1.5 rounded-[7px] border border-[#e9e9ef] text-[13px] font-[500] hover:bg-[#f7f8fb] transition-colors">
-            Edit
-          </button>
+          <Link
+            href={`/campaigns/new?product=${post.productId}`}
+            className="px-3 py-1.5 rounded-[7px] border border-[#e9e9ef] text-[13px] font-[500] hover:bg-[#f7f8fb] transition-colors"
+          >
+            Post again
+          </Link>
           <Link
             href="/analytics"
             className="px-3 py-1.5 text-[13px] font-[600] text-[#5849da] hover:underline"

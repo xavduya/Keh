@@ -4,158 +4,146 @@
 
 Keh is an AI-powered social media management SaaS for **small business owners**. The core product idea: the owner makes *business* decisions (which product, what promotion, what goal, when), and the AI makes the *marketing* decisions (captions, platform tailoring, posting time, what worked). When designing UI or copy, minimise cognitive load for a non-marketer — plain language, sensible defaults, few choices per step.
 
-The app is a refactor of an earlier vanilla-JS prototype (referred to as "@Sites" / formerly "Suki"). It is being built as a **hackathon MVP**: favour the smallest change that makes the core loop real over polish.
+The app is a refactor of an earlier vanilla-JS prototype ("@Sites" / formerly "Suki"), built as a **hackathon MVP**: favour the smallest change that makes the core loop real over polish.
 
-**Core loop (working end to end on Supabase):** sign up → add a product → create a campaign in the wizard → it appears in Campaigns, Calendar, Content and the Dashboard. The brand profile (business details + brand voice) is editable and saved. Analytics, the AI assistant, social accounts and settings still run on mock data or local state; subscription shows the real plan but upgrades aren't wired.
+**Core loop (working end to end on Supabase):** sign up → add a product → create a campaign in the wizard (optionally filled by the AI) → it appears in Campaigns, Calendar, Content and Home. The AI assistant, weekly recommendations, analytics (from `post_metrics`), brand profile, social account connections (Meta OAuth + TikTok username) and plan limits are all real. **Nothing is published to social platforms yet** — see "Known gaps".
 
-The audit and prioritized roadmap live in [docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) (gaps are referenced as G1–G24 below).
+The original audit and roadmap are in [docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) (gaps G1–G24); "Known gaps" below is the current list.
 
 ## Commands
 
 ```bash
-npm run dev      # dev server on http://localhost:3000 (also regenerates AGENTS.md)
-npm run build    # production build — the closest thing to a type check
-npm run lint     # ESLint (next core-web-vitals + typescript)
+npm run dev        # dev server on http://localhost:3000 (also regenerates AGENTS.md)
+npm run build      # production build — the closest thing to a type check
+npm run lint       # ESLint (next core-web-vitals + typescript)
+npm run seed:demo -- --email <owner>   # ~8 weeks of demo posts + metrics (--reset removes them)
 ```
 
-There is no test suite and no CI yet. Verify changes with `npm run build` + `npm run lint`, and by running the app. The `supabase` CLI is a dev dependency (`npx supabase …`), but the project isn't linked yet (no `supabase/config.toml`).
+There is no test suite and no CI. Verify changes with `npm run build` + `npm run lint`, and by running the app. The `supabase` CLI is a dev dependency, but the project isn't linked (no `supabase/config.toml`).
+
+**Line endings:** the repo is checked out with CRLF (`core.autocrlf=true`). The Edit tool handles this; scripted multi-line find/replace must normalise `\r\n` first or it silently won't match.
 
 ## Stack (versions matter — check docs, not memory)
 
-- **Next.js 16** App Router. Breaking changes vs older Next — read `node_modules/next/dist/docs/` before using an API. Notably, middleware is now **`src/proxy.ts`** exporting `proxy()`, not `middleware.ts`. Server Action body limit is raised to 6 MB in `next.config.ts` for photo uploads.
+- **Next.js 16** App Router. Breaking changes vs older Next — read `node_modules/next/dist/docs/` before using an API. Middleware is **`src/proxy.ts`** exporting `proxy()`. `error.tsx` receives `{ error, retry }` (not `reset`). Server Action body limit is 11 MB in `next.config.ts` (the brand form can send two 5 MB images).
 - **React 19**, **TypeScript strict**, path alias `@/*` → `src/*`.
-- **Tailwind CSS v4** (CSS-first config in `src/app/globals.css`, no tailwind.config) + **shadcn/ui** (`base-nova` style, built on `@base-ui/react`, not Radix; `cn` comes from shadcn's `cn` package). Add primitives with `npx shadcn add <name>`.
+- **Tailwind CSS v4** (CSS-first config in `src/app/globals.css`) + **shadcn/ui** (`base-nova` style on `@base-ui/react`, not Radix). Add primitives with `npx shadcn add <name>`.
 - **Zod 4**, **Recharts 3**, **lucide-react**.
-- **Supabase** (`@supabase/ssr`, `@supabase/supabase-js`) — Auth, Postgres (RLS) and Storage. `@supabase/server` is installed but unused.
-- **AI models** — `lib/ai/providers.ts` calls **Gemini** (`GEMINI_API_KEY`, `GEMINI_MODEL`, default `gemini-3.8-flash`, free tier, `generateContent` REST; one retry on 5xx, then `GEMINI_FALLBACK_MODELS` — default `gemini-3.7-flash,gemini-3.6-flash` — on overload/quota/retired model, all within a 30 s budget) or else **OpenAI** (`OPENAI_API_KEY`), both with plain `fetch`, JSON output. Without a key — or on any model failure — the assistant runs a rules-based **guided** mode. Response `mode` is `"ai"` or `"guided"`. Gemini free-tier prompts may be used by Google; don't send sensitive data.
+- **Supabase** (`@supabase/ssr`, `@supabase/supabase-js`) — Auth, Postgres (RLS), Storage, Realtime. `@supabase/server` is installed but unused.
+- **AI:** Gemini (default) or OpenAI, called with `fetch` from `lib/ai/providers.ts` — no SDK installed.
 
 ## Architecture
 
 ```
 src/
-├── app/(auth)/        # login, signup + actions.ts (login / signup / signOut)
-├── app/auth/callback/ # email-confirmation route handler (exchanges ?code= for a session)
-├── app/(dashboard)/   # app routes sharing DashboardLayout (sidebar + topbar)
-│   ├── dashboard/     # server page — real posts, 30-day stats, recommendation (lib/analytics); accounts widget is mock
-│   ├── campaigns/     # list (server page + CampaignsList) + actions.ts (saveCampaign)
-│   ├── campaigns/new/ # server page → CampaignWizard (real products + brand details)
-│   ├── calendar/      # server page → CalendarView (real posts)
-│   ├── content/       # server page → ContentView (real posts)
-│   ├── products/      # server page → ProductsView + ProductDialog + actions.ts (saveProduct)
-│   ├── brand/         # server page → components/brand/BrandForm + actions.ts (saveBrandProfile)
-│   ├── analytics/     # server page → components/analytics/AnalyticsView (real posts + metrics)
-│   ├── assistant/     # server page → components/assistant/AssistantView (AI marketing manager chat)
-│   ├── social-accounts/ # server page → SocialAccountsManager + actions.ts (disconnect, connectTikTok)
-│   └── subscription, settings
-├── app/api/assistant/ # POST route → generateMarketingAdvice (auth checked in the route; proxy lets it through)
-├── app/page.tsx       # redirects to /dashboard
-├── components/
-│   ├── auth/          # AuthForm (shared login/signup form)
-│   ├── layout/        # AppSidebar, TopBar, DashboardLayout
-│   ├── ui/            # shadcn Button + Keh primitives (StatCard, PageHeader, badges, AvailabilityBadge…)
-│   ├── assistant/     # MarketingManagerCopilot (floating copilot on every page)
-│   └── campaigns/     # CampaignWizard + CampaignContext + 5 steps + WizardAiCopilot + AiChangesBanner
-├── services/          # data access — business, product, campaign (+ post_metrics), storage = Supabase; recommendation, social-account, analytics.getAudienceLearnings = mock
-├── data/              # typed mock data (still used by the mock services and mock pages)
+├── app/
+│   ├── error.tsx, not-found.tsx       # last-resort error page (outside the app shell), 404
+│   ├── (auth)/                        # login, signup + actions.ts (login / signup / signOut)
+│   ├── (dashboard)/                   # signed-in app, shares DashboardLayout (sidebar, topbar, copilot, LiveRefresh)
+│   │   ├── error.tsx, loading.tsx     # error/loading states inside the app shell
+│   │   ├── dashboard/                 # Home: stats, today/tomorrow, recommendation card, insights
+│   │   ├── campaigns/ (+ new/)        # list + wizard; actions.ts (saveCampaign)
+│   │   ├── calendar/, content/        # month calendar, content library
+│   │   ├── products/                  # ProductsView + ProductDialog + PhotoPicker; actions.ts (saveProduct)
+│   │   ├── analytics/                 # AnalyticsView (lib/analytics on real posts)
+│   │   ├── assistant/                 # AI chat page + recommendations + "What your results show"
+│   │   ├── brand/                     # BrandForm; actions.ts (saveBrandProfile)
+│   │   ├── social-accounts/           # connect/disconnect; actions.ts (disconnect, connectTikTok)
+│   │   ├── subscription/, settings/   # plan + usage (read-only); account + timezone
+│   │   └── recommendation-actions.ts  # refreshRecommendations, dismissRecommendation
+│   ├── api/assistant/                 # POST — AI chat (own auth check; see proxy.ts)
+│   ├── api/social/connect/[platform]/ # starts Meta OAuth (facebook | instagram)
+│   └── auth/callback, auth/social/callback  # email confirmation; Meta OAuth callback
+├── components/                        # by feature: campaigns (wizard + WizardAiCopilot), assistant, dashboard,
+│                                      # analytics, brand, social-accounts, layout, auth, ui (shadcn + Keh primitives)
+├── hooks/useMarketingAssistant.ts     # chat state + handing AI-filled campaigns to the wizard
+├── services/                          # data access, all Supabase: business, product, campaign, analytics,
+│                                      # recommendation, social-account, storage
 ├── lib/
-│   ├── env.ts         # validated env vars (publicEnv, getSupabaseSecretKey)
-│   ├── analytics.ts   # pure stats: periodSummary, weeklyReach, findings, insights, recommendNextMove
-│   ├── auth/context.ts# getCurrentContext() → { user, business }; redirects to /login if signed out
-│   ├── supabase/      # client.ts (browser), server.ts (server + admin), database.types.ts (hand-written)
-│   ├── ai/            # ai.service.ts — marketing manager: OpenAI or guided engine, sanitizeResponse
-│   ├── social/        # SocialPublisher interface — stub
-│   └── validation/    # Zod schemas (ProductFormSchema, CampaignDraftSchema are used by actions)
-├── hooks/             # useMarketingAssistant (chat state + /api/assistant) and AI hand-off helpers
-├── types/index.ts     # domain model (single source of truth for TS types)
-├── constants/         # platforms, statuses, goals, nav, plans, DEFAULT_TIMEZONE, MAX_UPLOAD_BYTES
-└── utils/             # index.ts (formatPrice, initials…) + datetime.ts (Manila-time helpers)
-supabase/migrations/   # 001–005 base schema, 007_hardening, 008_product_images (Storage bucket), 009_ai_rate_limit, 010_plan_usage, 011_realtime, 012_ai_recommendations
-supabase/seed.sql      # dev seed — NOT a migration; needs a matching auth user first
-scripts/seed-demo-data.mjs  # `npm run seed:demo -- --email <owner>`: 8 weeks of published demo posts + metrics (--reset removes them, --list lists businesses)
+│   ├── ai/                            # ai.service (chat + guided engine), providers (Gemini/OpenAI),
+│   │                                  # context (what the AI knows), recommendations, rate-limit
+│   ├── analytics.ts                   # pure findings/insights/recommendedSlot from posts + metrics
+│   ├── auth/context.ts                # getCurrentContext() → { user, business }; redirects to /login
+│   ├── social/                        # oauth-state (CSRF nonce), connect-errors, publisher.interface (stub)
+│   ├── supabase/                      # client.ts, server.ts (server + admin), database.types.ts (hand-written)
+│   └── validation/schemas.ts          # Zod schemas
+├── types/index.ts                     # domain model (single source of truth for TS types)
+├── constants/                         # platforms, statuses, goals, nav, SUBSCRIPTION_PLANS, DEFAULT_TIMEZONE…
+└── utils/                             # formatting, datetime (Manila-time helpers), recommendations
+supabase/migrations/                   # 001–005, 007–013 (there is no 006)
+supabase/seed.sql                      # old dev seed (was migration 006); prefer `npm run seed:demo`
+scripts/seed-demo-data.mjs             # demo history generator (secret key)
 ```
 
-There is no `error.tsx` / `loading.tsx` / `not-found.tsx` yet.
-
-**Auth flow:** `proxy.ts` refreshes the session and optimistically redirects signed-out users to `/login` (and signed-in users away from `/login`/`/signup`). The authoritative check is `getCurrentContext()`, called by the `(dashboard)` layout, every server page, and every Server Action. Never hard-code a business ID.
+**Auth flow:** `proxy.ts` refreshes the session and optimistically redirects signed-out users to `/login` (and signed-in users away from `/login`/`/signup`); `/auth/*` and `/api/assistant` are exempt. The authoritative check is `getCurrentContext()`, called by the `(dashboard)` layout, every server page and every Server Action. Never hard-code a business ID.
 
 ### Patterns to follow
 
-- **Pages:** a server `page.tsx` calls `getCurrentContext()` + services and passes plain data to a `"use client"` view component (see `products/`, `calendar/`, `content/`, `campaigns/`). Don't make whole pages client components.
-- **Mutations:** a `"use server"` `actions.ts` next to the route. Each action calls `getCurrentContext()`, validates with a Zod schema from `lib/validation/schemas.ts`, re-checks ownership of any referenced row, calls a service write function, then `revalidatePath(...)` for every page that shows the data. Return `{ error }` / `{ fieldErrors }` for the UI; `redirect()` on success when navigating away.
-- **Forms:** use `useActionState`, but submit via `onSubmit` + `startTransition(() => formAction(formData))` rather than `<form action>` — React 19 resets action-driven forms after every submit, which wipes input when validation fails (see `AuthForm`, `ProductDialog`).
-- **Dialogs:** native `<dialog>` + `showModal()` (focus trap, Escape and backdrop for free) — see `ProductDialog`.
-- **Stats** live in `lib/analytics.ts` as pure functions over `PostPerformance[]` so server pages and client views (e.g. the Analytics platform filter) compute the same numbers. Only `PUBLISHED` posts count.
-- **Services** map DB rows (snake_case) to domain types (camelCase) with a `toX(row)` mapper; they use `createServerClient()` so RLS applies, and also filter by `businessId` explicitly.
-- **Dates/times:** use `@/utils/datetime` (`manilaDateKey`, `manilaTime`, `manilaWeekdayHour`, `todayKey`, `manilaToUtcIso`, `formatDateKey`…). The DB stores UTC `timestamptz`; the UI shows `Asia/Manila`. Never slice ISO strings.
-- **Images:** upload through `storage.service.ts` (`submittedFile`, `validateImage`, `uploadBusinessImage`) — files go to the `product-images` bucket under `<business_id>/…` (brand images under `<business_id>/brand/…`). Photos are optional (`imageUrl` may be `""`), so guard every `<Image>`.
+- **Pages:** a server `page.tsx` calls `getCurrentContext()` + services and passes plain data to a `"use client"` view. Don't make whole pages client components.
+- **Mutations:** a `"use server"` `actions.ts` next to the route. Each action calls `getCurrentContext()`, validates with Zod (`lib/validation/schemas.ts`), re-checks ownership of any referenced row, calls a service write function, then `revalidatePath(...)` for every page that shows the data. Return `{ error }` / `{ fieldErrors }`; `redirect()` on success when navigating away.
+- **Forms:** `useActionState`, submitted via `onSubmit` + `startTransition(() => formAction(formData))` rather than `<form action>` — React 19 resets action-driven forms after every submit (see `AuthForm`, `ProductDialog`).
+- **Dialogs:** native `<dialog>` + `showModal()` — see `ProductDialog`.
+- **Services** map DB rows (snake_case) to domain types (camelCase) with a `toX(row)` mapper, use `createServerClient()` so RLS applies, and also filter by `businessId`.
+- **Dates/times:** use `@/utils/datetime` (`manilaDateKey`, `manilaTime`, `todayKey`, `manilaToUtcIso`, `formatDateKey`, `nextWeekday`…). The DB stores UTC `timestamptz`; the UI shows `Asia/Manila`. Never slice ISO strings.
+- **Images:** photos are optional (`imageUrl` may be `""`), so guard every `<Image>`. Uploads go through `storage.service.ts` (type/size checked, extension from the MIME type).
+- **Live refresh:** `LiveRefresh` subscribes to Realtime changes for the business and calls `router.refresh()`; new tables that pages display should be added to its list (and to the `supabase_realtime` publication).
+- **URL messages:** never render free text from the query string; pass a code and map it (see `lib/social/connect-errors.ts`).
 
-### AI marketing manager
+### AI layer (`lib/ai/`)
 
-- One conversation hook, `useMarketingAssistant`, powers the assistant page, the floating copilot and the in-wizard copilot. All three call `POST /api/assistant`.
-- The route builds the context (business, brand, active products, and the business's results from `lib/analytics` incl. `recommendedSlot`) and calls `generateMarketingAdvice`. Responses can carry `ideas` and an `action` that fills wizard fields plus a `changes` list explaining every field changed.
-- **Every response goes through `sanitizeResponse`** (model or guided): only real ACTIVE product IDs, dates ≥ today, valid HH:MM times, bounded text, markdown stripped, and a change entry for every changed field. Keep it that way — the wizard trusts sanitized actions.
-- Intent scoping: `captions` may only change captions; `schedule` only date/time.
-- **Recommendations** (Home "Recommended for this week", assistant "Ideas to put into action") are generated by `lib/ai/recommendations.ts` (model, or rules from `lib/analytics` findings when no model / unusable reply; AI results are sanitized, recommendations about unknown products dropped, and topped up to 3 with rules-based ones) and stored in `ai_recommendations` (migration 012 adds `product_id`, `details`, `generated_by`). `recommendation-actions.ts` refreshes them when missing or older than 7 days (the pages trigger this in the background) or on "New ideas", and dismisses on "Not now". Writes use the secret key; owners can only read/dismiss. Shared context comes from `lib/ai/context.ts` (`buildMarketingContext`), the rate limit from `lib/ai/rate-limit.ts`.
-- Hand-off to the wizard: `stashPendingAiCampaign` (sessionStorage, read by `CampaignContext` *after mount*) or `dispatchAiCampaign` (window event while the wizard is open). The owner can review the change log and undo (`AiChangesBanner`).
-- **Rate limiting:** `/api/assistant` calls the `consume_ai_request()` RPC (migration 009) before any AI work — 8 requests/minute and 100/day per user (`AI_LIMITS` in the route), 429 + `Retry-After` when exceeded. It fails open (logs an error) if the migration isn't applied.
-- **Plan usage:** every saved campaign (drafts included) uses one of the plan's monthly AI campaigns; each scheduled post uses one scheduled post. `saveCampaign` calls `consumeCampaignQuota` (RPC `consume_campaign_quota`, migration 010, locks the subscription row, rolls counters over at `usage_resets_at`) before creating the campaign and `releaseCampaignQuota` (secret key only) if creating it fails. Fails open if 010 isn't applied.
+- **Server-only.** Client code talks to `POST /api/assistant` (chat) or the `refreshRecommendations` Server Action. Model output is parsed with Zod and passed through `sanitizeResponse` / `sanitize` (only real ACTIVE product IDs, future dates, bounded text).
+- **Guided engine:** with no API key, or when the model fails or returns junk, a rules-based engine answers from the same context — the app must work with no AI key.
+- **Cost controls:** `usesModel()` skips the model for "best time" and results questions (answered by the guided engine). Only model calls count against `consume_ai_request` (migration 009), capped per plan by `SUBSCRIPTION_PLANS[].aiRequestsPerDay`; if the limiter is unavailable it fails closed to guided mode. Providers cap thinking (`GEMINI_THINKING_LEVEL`), set per-task output budgets, send a JSON schema as structured output, make at most 2 upstream calls, and put failing models on a per-process cooldown. Every call logs `[ai] <label> <model> in=… out=… thinking=…`.
+- **Prompts send only what the intent needs** (`promptContext` in `ai.service.ts`); keep new context small.
+- **Recommendations** are stored in `ai_recommendations`, generated automatically from Home when missing or over a week old (`getRecommendationState`), and on demand via "New ideas" (1-hour cooldown).
 
 ### Rules
 
-- **Data flow is UI → service → data.** Don't add new `@/data/*` imports to UI code. Remaining direct imports: the analytics, assistant, brand, social-accounts and subscription pages (still mock).
-- **AI calls are server-only.** Client components must never call OpenAI; go through a Server Action / Route Handler → `lib/ai/ai.service.ts`. Validate AI structured output with Zod.
-- **Social platforms go through `SocialPublisher`** (`lib/social/publisher.interface.ts`). Nothing publishes to real platforms yet: "Schedule" and "Publish now" save posts as `SCHEDULED` (TikTok as `ACTION_REQUIRED`, since the owner finishes it manually); "Save draft" saves `DRAFT`.
-- **Supabase clients:** `createBrowserClient()` in client code; `createServerClient()` in server code (respects RLS); `createAdminClient()` bypasses RLS — trusted server code only.
-- **RLS ownership chain:** `auth.uid() → profiles.id → businesses.owner_id → <table>.business_id`, via `get_user_business_ids()`. Every new table needs RLS enabled plus policies following this chain. Storage paths for product photos are `<business_id>/<uuid>.<ext>`.
-- **Migrations:** 001–005, 007 and 008 are applied to the project in `.env`; **009 (AI rate limit) and 010 (plan usage) still need to be applied** — until then both fail open and log an error. Once a migration is applied, fix schema/RLS with a new numbered migration, not by editing it. `social_accounts` token columns aren't selectable by users — select explicit columns, not `*`.
+- **Social platforms go through `SocialPublisher`** (`lib/social/publisher.interface.ts`, still a stub). Nothing publishes yet: "Schedule" and "Publish now" save posts as `SCHEDULED` (TikTok as `ACTION_REQUIRED`); "Save draft" saves `DRAFT`.
+- **Supabase clients:** `createBrowserClient()` in client code; `createServerClient()` in server code (RLS); `createAdminClient()` bypasses RLS — trusted server code only (token writes, quota release, recommendation writes, seed script).
+- **RLS ownership chain:** `auth.uid() → profiles.id → businesses.owner_id → <table>.business_id`, via `get_user_business_ids()`. Every new table needs RLS plus policies on this chain. Storage paths are `<business_id>/…` in the `product-images` bucket.
+- **Migrations:** numbered SQL files applied by hand in the Supabase SQL editor. Once applied, fix schema/RLS with a new migration, never by editing an old one. Newer ones to check are applied: 009 (AI rate limit), 010 (plan usage), 011 (realtime), 012 (recommendations), 013 (dismiss-only updates). Code degrades gracefully when 009/010/012 are missing, but limits then don't apply.
+- **`social_accounts` token columns aren't selectable by users** (column grants, 007) — select explicit columns (`SAFE_COLUMNS`), not `*`; writes go through the admin client.
 
 ### Domain model
 
 `User → Business → { BrandProfile, Product[], SocialAccount[], Campaign[] → SocialPost[] → PostMetric[], AIRecommendation[], Subscription }`
 
-- Platforms: `FACEBOOK | INSTAGRAM | TIKTOK`. The social-accounts page also shows a "Google Business" card faked as a `FACEBOOK` account; don't build on that hack.
+- Platforms: `FACEBOOK | INSTAGRAM | TIKTOK`.
 - Post status: `DRAFT | SCHEDULED | PUBLISHING | PUBLISHED | ACTION_REQUIRED | FAILED`. A campaign's status is derived from its posts by the `derive_campaign_status` trigger.
-- A campaign has one product (`campaigns.product_id` is `not null`, `on delete restrict`) and one post per platform. Only `ACTIVE` products are offered in the wizard.
-- `handle_new_user()` (rewritten in 007) creates a profile, a business named from the sign-up form, a brand profile and a FREE subscription.
+- A campaign has one product (`not null`, `on delete restrict`) and one post per platform. Only `ACTIVE` products can be used in a campaign (wizard + `saveCampaign`).
+- `handle_new_user()` (007) creates a profile, a business named from the sign-up form, a brand profile and a FREE subscription.
 - Enums are UPPER_SNAKE string unions.
 
-**Enums/types are duplicated in four places and must stay in sync:** `src/types/index.ts`, `src/lib/validation/schemas.ts`, `src/lib/supabase/database.types.ts`, and `supabase/migrations/001_enums.sql`. `database.types.ts` is hand-written; regenerate it with the Supabase CLI once the project is linked. Plan limits are duplicated in `SUBSCRIPTION_PLANS`, the `subscriptions` table defaults, and `handle_new_user()`.
+**Kept in sync by hand:** enums in `src/types/index.ts`, `src/lib/validation/schemas.ts`, `src/lib/supabase/database.types.ts` and `supabase/migrations/001_enums.sql`; plan limits in `SUBSCRIPTION_PLANS`, the `subscriptions` defaults and `handle_new_user()`.
 
 ### Styling
 
-- Brand tokens live in `globals.css` as `--keh-*` and are exposed as `bg-brand`, `text-brand-dark`, `text-brand-muted`, `border-brand-line`, `bg-brand-bg`, `bg-brand-light` (and `bg-primary` = Keh purple). New code uses these tokens and the shadcn `Button`; older pages still use hard-coded hex values (`text-[#7b7b8b]`) and hand-rolled buttons.
+- Brand tokens are `--keh-*` in `globals.css`, exposed as `bg-brand`, `text-brand-dark`, `text-brand-muted`, `border-brand-line`, `bg-brand-bg`, `bg-brand-light` (and `bg-primary`). New code uses these and the shadcn `Button`; older components still use hex values (`text-[#7b7b8b]`).
 - Fonts: DM Sans (body), Manrope (headings) via `next/font/google`.
-- Remote images are allowed only from `*.supabase.co` storage and `images.unsplash.com` (mock data) — see `next.config.ts`.
+- Remote images: `*.supabase.co` storage and `images.unsplash.com` (used by `supabase/seed.sql`).
 
-## Still mock / not wired
+## Known gaps
 
-- **Dashboard:** only the connected-accounts widget is still mock.
-- **Mock pages:** settings (toggles do nothing). Subscription shows the real plan and usage; upgrading isn't wired.
-- **Social accounts:** Facebook/Instagram connect via Meta OAuth (`/api/social/connect/[platform]` → `/auth/social/callback`, needs `META_APP_ID`/`META_APP_SECRET` and the callback URL registered in the Meta app); `state` carries a nonce checked against an httpOnly cookie (`lib/social/oauth-state.ts`). TikTok is manual (username only). Tokens are written/cleared only with the secret key; reads select explicit safe columns (`select("*")` on `social_accounts` fails with 42501 because of migration 007). Nothing publishes to the platforms yet and page tokens aren't refreshed.
-- **Unwired controls:** content Reuse/Duplicate/Edit, calendar post chips and week view, "Why this recommendation?", notifications bell, subscription Upgrade/Manage. There's no campaign edit/delete and no product delete yet.
-- **Metrics:** nothing collects real platform metrics yet. `getPosts()` reads the latest `post_metrics` row per post (0 when missing); for demos, `npm run seed:demo` backfills published posts with generated metrics. Insights and the Home recommendation are template text from `lib/analytics.ts`, not AI.
+**Major (need design or real work):**
 
-## Roadmap
+1. **No publishing or scheduler.** Posts stay `SCHEDULED` forever; "Publish now" just saves with the current time. Needs `SocialPublisher` adapters (Facebook, Instagram) and a job runner (e.g. Supabase cron + an Edge Function or a protected Route Handler).
+2. **No metrics pipeline.** `post_metrics` is only filled by `seed:demo`, so real accounts have empty analytics, insights and no data-driven recommendations.
+3. **Wizard captions are templates by default.** `buildCaptions` in `CampaignContext.tsx` uses generic copy (e.g. "Treat yourself today!", which the AI prompt bans); AI captions only appear when the owner asks the copilot. Consider generating AI captions automatically on the Content step (one model call per campaign).
+4. **No campaign edit, delete or reschedule**, and no product delete (availability can be changed). Calendar and Content can't open a post.
+5. **No password reset, password/email change, or account deletion.**
+6. **Social tokens are stored in plain text** (hidden from users by column grants, but not encrypted — use Supabase Vault before real launch). Meta connect always picks the owner's *first* Page; no token revocation handling.
+7. **Data loading doesn't scale.** Most pages load every campaign, post and metric row for the business; `getPosts` uses `.in(ids)` lists that hit URL-length limits at a few hundred campaigns. Needs pagination / date-range queries or a database view.
+8. **No tests or CI.**
+9. **Onboarding, brand setup and billing** — planned as a guided onboarding after sign-up. Subscription "Upgrade" / "Manage" buttons do nothing yet. (Usage counters reset lazily in `consume_campaign_quota` once `usage_resets_at` passes, so the page can show last month's usage until the next campaign is saved.)
 
-| Phase | Status | Scope |
-|---|---|---|
-| 1–3 | Done | Prototype audit, foundation, layout + all routes (incl. `/campaigns` list) |
-| 3b | Dropped | Mock-only wiring of modals — superseded by building features on real data |
-| 4–5 | Mostly done | Server pages + Server Actions + Supabase for auth, business, products, campaigns. Still to do: brand profile save, `supabase init`/linked types, empty/error states, tests |
-| 6 | Planned | AI layer — OpenAI behind `ai.service.ts` (captions, recommendations), with usage-limit enforcement |
-| 7 | Planned | Social adapters (Facebook, Instagram; TikTok later) + scheduled-publish job runner |
-| 8 | Planned | Metrics & learning — analytics pipeline, AI recommendations |
+**Minor / known:** campaign creation isn't a single transaction (the service deletes the campaign if its posts fail); `derive_campaign_status` ignores post deletes; AI model cooldowns are per server process; `database.types.ts` is hand-written; the RLS policies let an owner create extra businesses, which the app ignores (it always uses the first).
 
-Next priorities (see `docs/GAP_ANALYSIS.md` → "Progress"): AI captions (and AI-worded insights from `lib/analytics` findings) → demo polish (hide dead controls, delete product/campaign) → error/loading states.
+## Environment
 
-The README's phase table is out of date. The older `.bob/artifacts/keh-refactoring-progress-missing-features.html` predates the gap analysis.
-
-## Environment & known issues
-
-- **Env vars** (see `.env.example`, validated in `src/lib/env.ts`): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`. Later: `OPENAI_API_KEY`. `.env*` is gitignored except `.env.example`. **Never commit credentials.** Use the publishable/secret keys, not the legacy anon/service-role keys.
-- **Email confirmation:** if the Supabase project requires it, sign-up shows "check your email" and the link lands on `/auth/callback`, which must be in the project's allowed redirect URLs. For demos, turning off "Confirm email" in Supabase Auth settings is simplest.
-- **Empty data crashes:** the assistant page indexes `recommendations[0..2]` directly; the subscription progress bar divides by the limit (G16). Both are mock pages today.
-- **Supabase:** no `supabase/config.toml`; `database.types.ts` is hand-written; `derive_campaign_status` ignores post deletes (G15); campaign creation isn't a single transaction (the service deletes the campaign if its posts fail to insert).
+- **Env vars** (see `.env.example`, validated in `src/lib/env.ts`): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`; optional `GEMINI_API_KEY` / `OPENAI_API_KEY` (+ `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`, `GEMINI_THINKING_LEVEL`, `OPENAI_MODEL`) and `META_APP_ID` / `META_APP_SECRET`. `.env*` is gitignored except `.env.example`. **Never commit credentials.** Use the publishable/secret keys, not the legacy anon/service-role keys.
+- **Email confirmation:** if enabled, the link lands on `/auth/callback`, which must be in the project's allowed redirect URLs. For demos, turning off "Confirm email" is simplest.
+- **Gemini free tier** has small daily quotas per model; when the main model is exhausted, requests fall back to the next model and then to guided mode. Watch the `[ai]` log lines.
 
 ## Agent skills
 

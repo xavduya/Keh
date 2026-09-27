@@ -11,7 +11,14 @@ import { createServerClient } from "@/lib/supabase/server";
 import { MAX_UPLOAD_BYTES } from "@/constants";
 
 const IMAGE_BUCKET = "product-images";
-const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+/** Allowed image types and the extension each is stored with. */
+const IMAGE_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
+const ALLOWED_IMAGE_TYPES = Object.keys(IMAGE_EXTENSIONS);
 
 /** Returns the file if a non-empty file was submitted, else null. */
 export function submittedFile(value: FormDataEntryValue | null): File | null {
@@ -35,7 +42,8 @@ export async function uploadBusinessImage(
   subfolder?: string
 ): Promise<string> {
   const supabase = await createServerClient();
-  const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+  // From the checked type, not the file name: "photo.html" can't become a stored .html file.
+  const ext = IMAGE_EXTENSIONS[file.type] ?? "jpg";
   const path = [businessId, subfolder, `${crypto.randomUUID()}.${ext}`]
     .filter(Boolean)
     .join("/");

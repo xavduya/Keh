@@ -25,7 +25,6 @@ export function CalendarView({ posts, today }: { posts: EnrichedPost[]; today: s
   const [todayYear, todayMonth] = today.split("-").map(Number);
   const [month, setMonth] = useState(todayMonth - 1); // 0-indexed
   const [year, setYear] = useState(todayYear);
-  const [viewMode, setViewMode] = useState<"month" | "week">("month");
   const [filter, setFilter] = useState("All");
 
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -138,30 +137,6 @@ export function CalendarView({ posts, today }: { posts: EnrichedPost[]; today: s
             Today
           </button>
         </div>
-        <div className="flex gap-1">
-          <button
-            onClick={() => setViewMode("month")}
-            className={[
-              "px-3 py-1.5 rounded-[7px] text-[13px] font-[600] border transition-colors",
-              viewMode === "month"
-                ? "bg-[#5849da] text-white border-transparent"
-                : "border-[#e9e9ef] text-[#262535] hover:bg-[#f7f8fb]",
-            ].join(" ")}
-          >
-            Month
-          </button>
-          <button
-            onClick={() => setViewMode("week")}
-            className={[
-              "px-3 py-1.5 rounded-[7px] text-[13px] font-[600] border transition-colors",
-              viewMode === "week"
-                ? "bg-[#5849da] text-white border-transparent"
-                : "border-[#e9e9ef] text-[#262535] hover:bg-[#f7f8fb]",
-            ].join(" ")}
-          >
-            Week
-          </button>
-        </div>
       </div>
 
       <FilterTabs
@@ -216,8 +191,9 @@ export function CalendarView({ posts, today }: { posts: EnrichedPost[]; today: s
                         {dayPosts.slice(0, 2).map((p) => (
                           <div
                             key={p.id}
+                            title={p.title}
                             className={[
-                              "rounded-[4px] px-1.5 py-1 text-[11px] leading-tight cursor-pointer",
+                              "rounded-[4px] px-1.5 py-1 text-[11px] leading-tight",
                               p.status === "PUBLISHED"
                                 ? "bg-[#edf7f2] text-[#1a7a55]"
                                 : p.status === "ACTION_REQUIRED"
@@ -236,7 +212,10 @@ export function CalendarView({ posts, today }: { posts: EnrichedPost[]; today: s
                           </div>
                         ))}
                         {dayPosts.length > 2 && (
-                          <div className="text-[11px] text-[#7b7b8b] pl-1">
+                          <div
+                            className="text-[11px] text-[#7b7b8b] pl-1"
+                            title={dayPosts.slice(2).map((p) => `${manilaTime(p.scheduledAt)} ${p.title}`).join("\n")}
+                          >
                             +{dayPosts.length - 2} more
                           </div>
                         )}
@@ -250,9 +229,6 @@ export function CalendarView({ posts, today }: { posts: EnrichedPost[]; today: s
         ))}
       </div>
 
-      <p className="text-[12px] text-[#7b7b8b]">
-        Open a post to change its date or reschedule.
-      </p>
     </div>
   );
 }

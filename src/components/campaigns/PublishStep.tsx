@@ -15,11 +15,15 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   TIKTOK: "TikTok",
 };
 
-const FRIDAY = 5;
-const RECOMMENDED_TIME = "18:00";
+/** "18:00" → "6:00 PM" */
+function formatSlotTime(time: string): string {
+  const [hours, minutes] = time.split(":").map(Number);
+  return `${hours % 12 || 12}:${String(minutes).padStart(2, "0")} ${hours < 12 ? "AM" : "PM"}`;
+}
 
 export function PublishStep() {
-  const { draft, setDraft, prevStep, aiUpdatedFields } = useCampaign();
+  const { draft, setDraft, prevStep, aiUpdatedFields, business } = useCampaign();
+  const slot = business.postingSlot;
   const [pending, startTransition] = useTransition();
   const [pendingIntent, setPendingIntent] = useState<SaveIntent | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +40,7 @@ export function PublishStep() {
   }
 
   function applyRecommendedTime() {
-    setDraft({ scheduledDate: nextWeekday(todayKey(), FRIDAY), scheduledTime: RECOMMENDED_TIME });
+    setDraft({ scheduledDate: nextWeekday(todayKey(), slot.weekday), scheduledTime: slot.time });
   }
 
   const isAiDate = aiUpdatedFields.includes("scheduledDate");
@@ -100,7 +104,9 @@ export function PublishStep() {
       <div className="bg-[#f0edff] text-[#5849da] rounded-lg px-4 py-3 text-[13px] flex items-start gap-2">
         <Sparkles size={13} className="mt-0.5 shrink-0" />
         <span>
-          Friday at 6:00 PM is a good default for most local businesses.{" "}
+          {slot.fromResults
+            ? `Your posts on ${slot.label} have reached the most people so far — around ${formatSlotTime(slot.time)}.`
+            : `${slot.label} (around ${formatSlotTime(slot.time)}) is a good default until Keh learns from your results.`}{" "}
           <button
             type="button"
             onClick={applyRecommendedTime}

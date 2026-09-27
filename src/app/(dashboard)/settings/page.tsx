@@ -1,8 +1,7 @@
-"use client";
-
-import { useState } from "react";
+import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
-import { HintBox } from "@/components/ui/hint-box";
+import { getCurrentContext } from "@/lib/auth/context";
+import { signOut } from "@/app/(auth)/actions";
 
 function SettingsRow({
   label,
@@ -14,83 +13,52 @@ function SettingsRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-4 border-b border-[#e9e9ef] last:border-0">
+    <div className="flex items-center justify-between gap-4 py-4 border-b border-brand-line last:border-0">
       <div>
-        <p className="text-[14px] font-[600] text-[#262535]">{label}</p>
-        <p className="text-[13px] text-[#7b7b8b] mt-0.5">{description}</p>
+        <p className="text-[14px] font-[600] text-brand-dark">{label}</p>
+        <p className="text-[13px] text-brand-muted mt-0.5">{description}</p>
       </div>
       {children}
     </div>
   );
 }
 
-export default function SettingsPage() {
-  const [notifications, setNotifications] = useState(true);
-  const [priceFirst, setPriceFirst] = useState(false);
-  const [fresh, setFresh] = useState(false);
+const chip =
+  "inline-flex items-center px-2.5 py-1 rounded-md bg-brand-light text-brand text-[12px] font-[700] whitespace-nowrap";
+
+export default async function SettingsPage() {
+  const { user } = await getCurrentContext();
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="Make yourself at home"
-        subtitle="Your workspace preferences."
-      />
+      <PageHeader title="Make yourself at home" subtitle="Your account and workspace." />
 
-      <section className="bg-white rounded-[12px] border border-[#e9e9ef] p-6">
-        <h2 className="font-heading font-[700] text-[17px] text-[#262535] mb-2">Preferences</h2>
+      <section className="bg-white rounded-[12px] border border-brand-line p-6">
+        <h2 className="font-heading font-[700] text-[17px] text-brand-dark mb-2">Account</h2>
 
-        <SettingsRow
-          label="Notification reminders"
-          description="Reminders for posts that need a finishing touch."
-        >
-          <input
-            type="checkbox"
-            checked={notifications}
-            onChange={(e) => setNotifications(e.target.checked)}
-            aria-label="Notification reminders"
-            className="w-4 h-4 accent-[#5849da]"
-          />
+        <SettingsRow label="Signed in as" description={user.email}>
+          <form action={signOut}>
+            <button
+              type="submit"
+              className="px-3 py-1.5 rounded-[7px] border border-brand-line text-[13px] font-[500] hover:bg-brand-bg"
+            >
+              Log out
+            </button>
+          </form>
         </SettingsRow>
 
         <SettingsRow
-          label="Timezone"
-          description="All scheduled posts use Philippine time."
+          label="Business and brand"
+          description="Your business details, brand voice and call to action — used in every caption."
         >
-          <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-[#f0edff] text-[#5849da] text-[12px] font-[700] whitespace-nowrap">
-            Asia/Manila · UTC+8
-          </span>
+          <Link href="/brand" className="text-[13px] font-[600] text-brand hover:underline whitespace-nowrap">
+            Edit
+          </Link>
         </SettingsRow>
 
-        <SettingsRow
-          label="Explore as a new business"
-          description="See the experience without posts or historical insights."
-        >
-          <input
-            type="checkbox"
-            checked={fresh}
-            onChange={(e) => setFresh(e.target.checked)}
-            aria-label="Explore as a new business"
-            className="w-4 h-4 accent-[#5849da]"
-          />
+        <SettingsRow label="Timezone" description="All scheduled posts use Philippine time.">
+          <span className={chip}>Asia/Manila · UTC+8</span>
         </SettingsRow>
-
-        <SettingsRow
-          label="Always include prices"
-          description="Make product prices visible in campaign drafts."
-        >
-          <input
-            type="checkbox"
-            checked={priceFirst}
-            onChange={(e) => setPriceFirst(e.target.checked)}
-            aria-label="Always include prices"
-            className="w-4 h-4 accent-[#5849da]"
-          />
-        </SettingsRow>
-
-        <HintBox className="mt-4">
-          This is an interactive prototype. Edits last for this open session; refreshing restores
-          the sample café. AI, analytics, billing, and social publishing are simulated.
-        </HintBox>
       </section>
     </div>
   );
