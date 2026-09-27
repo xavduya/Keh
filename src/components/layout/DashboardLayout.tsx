@@ -6,9 +6,11 @@ import { TopBar } from "./TopBar";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
+  businessName: string;
+  businessLocation: string;
 }
 
-export function DashboardLayout({ children }: DashboardLayoutProps) {
+export function DashboardLayout({ children, businessName, businessLocation }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
@@ -16,6 +18,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <AppSidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        businessName={businessName}
+        businessLocation={businessLocation}
       />
 
       {/* Main content area */}

@@ -8,9 +8,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { SocialPlatformBadge, PlatformGroup } from "@/components/ui/social-platform-badge";
 import { PostStatusBadge } from "@/components/ui/post-status-badge";
-import { mockAnalyticsSummary } from "@/data/mock-analytics";
-import { mockEnrichedPosts } from "@/data/mock-posts";
-import { mockInsights } from "@/data/mock-analytics";
+import { getAnalyticsSummary, getInsights } from "@/services/analytics.service";
+import { getPosts } from "@/services/campaign.service";
+import { getConnectedAccounts } from "@/services/social-account.service";
 import { timeLabel } from "@/utils";
 import type { EnrichedPost } from "@/types";
 
@@ -55,13 +55,20 @@ function PostRow({ post }: { post: EnrichedPost }) {
   );
 }
 
-export default function DashboardPage() {
-  const summary = mockAnalyticsSummary;
-  const { today, tomorrow } = groupPostsByDate(mockEnrichedPosts);
-  const actionRequired = mockEnrichedPosts.find(
-    (p) => p.status === "ACTION_REQUIRED"
-  );
-  const connectedCount = 3;
+// Demo business ID — will come from Supabase session in Phase 5
+const DEMO_BUSINESS_ID = "biz_001";
+
+export default async function DashboardPage() {
+  const [summary, posts, insights, connectedAccounts] = await Promise.all([
+    getAnalyticsSummary(DEMO_BUSINESS_ID),
+    getPosts(DEMO_BUSINESS_ID),
+    getInsights(DEMO_BUSINESS_ID),
+    getConnectedAccounts(DEMO_BUSINESS_ID),
+  ]);
+
+  const { today, tomorrow } = groupPostsByDate(posts);
+  const actionRequired = posts.find((p) => p.status === "ACTION_REQUIRED");
+  const connectedCount = connectedAccounts.length;
 
   const quickActions = [
     { label: "Promote a product", icon: Package },
@@ -135,7 +142,7 @@ export default function DashboardPage() {
               </div>
               <div className="hidden sm:block relative w-[140px] h-[160px] rounded-[10px] overflow-hidden shrink-0">
                 <Image
-                  src={mockEnrichedPosts[0].product.imageUrl}
+                  src={posts[0]?.product.imageUrl ?? ""}
                   alt="Matcha Latte"
                   fill
                   className="object-cover"
@@ -229,12 +236,14 @@ export default function DashboardPage() {
       </div>
 
       {/* Insight strip */}
-      <div className="bg-[#f7f8fb] border border-[#e9e9ef] rounded-[10px] px-5 py-3 flex items-start gap-3">
-        <Sparkles size={15} className="text-[#5849da] mt-0.5 shrink-0" />
-        <p className="text-[13px] text-[#7b7b8b]">
-          {mockInsights[0]}
-        </p>
-      </div>
+      {insights[0] && (
+        <div className="bg-[#f7f8fb] border border-[#e9e9ef] rounded-[10px] px-5 py-3 flex items-start gap-3">
+          <Sparkles size={15} className="text-[#5849da] mt-0.5 shrink-0" />
+          <p className="text-[13px] text-[#7b7b8b]">
+            {insights[0]}
+          </p>
+        </div>
+      )}
 
       {/* Coming up + sidebar widgets */}
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4">

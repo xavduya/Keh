@@ -1,24 +1,23 @@
 /**
  * Supabase browser client
  *
- * Used in Client Components and browser-side code.
+ * Used in Client Components and browser-side code only.
  * Initialised with the public anon key — safe to expose to the browser.
  *
- * NOTE: This is a stub. Implement in Phase 5 when Supabase is configured.
+ * This creates a new client instance on every call, which is the recommended
+ * pattern for Next.js App Router (avoids sharing state between requests).
  *
  * Usage:
- *   import { supabaseBrowserClient } from "@/lib/supabase/client";
+ *   import { createBrowserClient } from "@/lib/supabase/client";
+ *   const supabase = createBrowserClient();
+ *   const { data } = await supabase.from("products").select("*");
  */
 
-// Uncomment and install @supabase/supabase-js in Phase 5:
-//
-// import { createBrowserClient } from "@supabase/ssr";
-//
-// export function supabaseBrowserClient() {
-//   return createBrowserClient(
-//     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-//     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-//   );
-// }
+import { createBrowserClient as _createBrowserClient } from "@supabase/ssr";
 
-export {}; // Placeholder — remove when implementing
+export function createBrowserClient() {
+  return _createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}

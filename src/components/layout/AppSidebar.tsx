@@ -7,7 +7,6 @@ import {
   BarChart2, Layers, Link as LinkIcon, CreditCard, Settings,
   Coffee, ChevronDown, X,
 } from "lucide-react";
-import { mockBusiness } from "@/data/mock-business";
 import { NAV_ITEMS, BOTTOM_NAV_ITEMS } from "@/constants";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string; size?: number }>> = {
@@ -18,11 +17,12 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string; size?: 
 interface AppSidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
+  businessName: string;
+  businessLocation: string;
 }
 
-export function AppSidebar({ isOpen, onClose }: AppSidebarProps) {
+export function AppSidebar({ isOpen, onClose, businessName, businessLocation }: AppSidebarProps) {
   const pathname = usePathname();
-  const business = mockBusiness;
 
   return (
     <>
@@ -73,10 +73,10 @@ export function AppSidebar({ isOpen, onClose }: AppSidebarProps) {
           </span>
           <div className="min-w-0">
             <p className="text-[13px] font-[600] text-[#262535] leading-tight truncate">
-              {business.name}
+              {businessName}
             </p>
             <p className="text-[11px] text-[#7b7b8b] leading-tight truncate">
-              {business.location}
+              {businessLocation}
             </p>
           </div>
         </div>
