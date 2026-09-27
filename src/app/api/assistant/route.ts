@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { generateMarketingAdvice } from "@/lib/ai/ai.service";
+import { generateMarketingAdvice, usesModel } from "@/lib/ai/ai.service";
 import { createServerClient } from "@/lib/supabase/server";
 import { MarketingAssistantRequestSchema } from "@/lib/validation/schemas";
-import { getBusinessByOwnerId } from "@/services/business.service";
+import { getBusinessByOwnerId, getSubscription } from "@/services/business.service";
 import { buildMarketingContext } from "@/lib/ai/context";
 import { consumeAiRequest } from "@/lib/ai/rate-limit";
 
@@ -67,14 +67,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const limit = await consumeAiRequest();
-    if (!limit.allowed) {
-      return NextResponse.json(
-        { error: limit.message },
-        { status: 429, headers: { "Retry-After": String(limit.retryAfter) } }
-      );
-    }
-
     const business = await getBusinessByOwnerId(user.id);
     if (!business) {
       return NextResponse.json(
@@ -83,8 +75,22 @@ export async function POST(request: Request) {
       );
     }
 
+    // Only model calls count against the plan's limit; guided answers are free.
+    let allowModel = usesModel(parsedRequest.data);
+    if (allowModel) {
+      const subscription = await getSubscription(business.id).catch(() => null);
+      const limit = await consumeAiRequest(subscription?.plan);
+      if (!limit.allowed && !limit.unavailable) {
+        return NextResponse.json(
+          { error: limit.message },
+          { status: 429, headers: { "Retry-After": String(limit.retryAfter) } }
+        );
+      }
+      allowModel = limit.allowed;
+    }
+
     const { context } = await buildMarketingContext(business);
-    const advice = await generateMarketingAdvice(parsedRequest.data, context);
+    const advice = await generateMarketingAdvice(parsedRequest.data, context, { allowModel });
 
     return NextResponse.json(advice);
   } catch (error) {

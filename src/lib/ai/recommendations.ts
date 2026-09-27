@@ -36,6 +36,37 @@ const ModelRecommendationSchema = z.object({
 });
 const ModelReplySchema = z.object({ recommendations: z.array(z.unknown()) });
 
+/** The reply's shape, sent as structured output instead of spelled out in the prompt. */
+const REPLY_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    recommendations: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: [...TYPES] },
+          title: { type: "string", description: "Action-first, under 70 characters, names the product or the change" },
+          explanation: { type: "string", description: "1-2 plain sentences on WHY, citing the business's own data when available" },
+          source: { type: "string", enum: [...SOURCES] },
+          productId: { type: "string", description: "An id from products, when about a product" },
+          actionGoal: { type: "string", enum: [...GOALS] },
+          actionLabel: { type: "string", description: "Button text, 2-4 words, e.g. Plan the promo" },
+          chips: {
+            type: "array",
+            description: "Up to 3 short tactics, e.g. 'TikTok first', 'Friday 6 PM', 'Show ₱90 price'",
+            items: { type: "string" },
+          },
+          promotion: { type: "string", description: "Only if suggesting an offer" },
+          confidence: { type: "number", description: "0.0-1.0" },
+        },
+        required: ["type", "title", "explanation", "source"],
+      },
+    },
+  },
+  required: ["recommendations"],
+};
+
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 const plain = (text: string) => text.replace(/\*\*(.+?)\*\*/g, "$1").replace(/^#{1,6}\s*/gm, "").trim();
 
@@ -62,20 +93,7 @@ function systemPrompt(data: MarketingData): string {
     "You are Keh, a practical marketing manager for a small business in the Philippines.",
     `Today is ${formatDateKey(today)} (${today}), Asia/Manila. Upcoming local moments: ${upcomingMoments(today).join(", ")}.`,
     "Write exactly 3 recommendations for this week — the owner will act on them in a few clicks.",
-    "",
-    "Respond with ONE JSON object and nothing else:",
-    `{ "recommendations": [ {
-  "type": "PRODUCT_SPOTLIGHT|POSTING_TIME|PLATFORM_FOCUS|CAMPAIGN_IDEA|CONTENT_FORMAT|CAPTION_STYLE",
-  "title": "Action-first, under 70 characters, names the product or the change",
-  "explanation": "1-2 plain sentences on WHY, citing the business's own data when available",
-  "source": "HISTORICAL_PERFORMANCE|BUSINESS_PROFILE|GENERAL_BEST_PRACTICE|AUDIENCE_DATA",
-  "productId": "<id from products, when about a product>",
-  "actionGoal": "PROMOTE_PRODUCT|GET_MORE_ORDERS|GET_STORE_VISITS|ANNOUNCEMENT|NEW_PRODUCT|PROMOTION|KEEP_PAGE_ACTIVE",
-  "actionLabel": "Button text, 2-4 words, e.g. Plan the promo",
-  "chips": ["up to 3 short tactics, e.g. 'TikTok first', 'Friday 6 PM', 'Show ₱90 price'"],
-  "promotion": "only if suggesting an offer",
-  "confidence": 0.0-1.0
-} ] }`,
+    "Reply with one JSON object that follows the response schema.",
     "",
     "Rules:",
     "- The 3 must be different kinds: one product to spotlight, one change to when/where to post (from the results), one campaign idea tied to an upcoming date or the catalog.",
@@ -90,7 +108,7 @@ function systemPrompt(data: MarketingData): string {
       products: data.products
         .filter((p) => p.availability === "ACTIVE")
         .slice(0, 12)
-        .map((p) => ({ id: p.id, name: p.name, price: p.price, promoPrice: p.promoPrice, category: p.category, description: p.description.slice(0, 200), timesPromoted: p.campaignCount ?? 0 })),
+        .map((p) => ({ id: p.id, name: p.name, price: p.price, promoPrice: p.promoPrice, category: p.category, description: clip(p.description, 120), timesPromoted: p.campaignCount ?? 0 })),
       performance: data.context.performance,
       bestPostingSlot: data.context.slot,
     })}`,
@@ -98,9 +116,11 @@ function systemPrompt(data: MarketingData): string {
 }
 
 async function fromModel(data: MarketingData): Promise<NewRecommendation[] | null> {
-  const text = await generateJson(systemPrompt(data), [
-    { role: "user", content: "Write this week's 3 recommendations." },
-  ]);
+  const text = await generateJson(
+    systemPrompt(data),
+    [{ role: "user", content: "Write this week's 3 recommendations." }],
+    { label: "recommendations", maxOutputTokens: 1024, schema: { name: "keh_recommendations", schema: REPLY_SCHEMA } }
+  );
   if (!text) return null;
   try {
     const json = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
@@ -228,9 +248,12 @@ function sanitize(recs: NewRecommendation[], data: MarketingData): NewRecommenda
  * rules. If the model's reply sanitizes down to fewer than three, the gap is
  * topped up with rules-based ones of kinds not already covered.
  */
-export async function generateRecommendations(data: MarketingData): Promise<NewRecommendation[]> {
+export async function generateRecommendations(
+  data: MarketingData,
+  { allowModel = true }: { allowModel?: boolean } = {}
+): Promise<NewRecommendation[]> {
   const rules = sanitize(fromRules(data), data);
-  const fromAi = await fromModel(data);
+  const fromAi = allowModel ? await fromModel(data) : null;
   if (!fromAi) return rules;
 
   const recs = sanitize(fromAi, data);

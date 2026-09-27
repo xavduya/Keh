@@ -245,6 +245,8 @@ export interface SubscriptionPlanMeta {
   socialAccounts: number;
   scheduledPostsPerMonth: number;
   aiCampaignsPerMonth: number;
+  /** Language-model calls (assistant messages + recommendation refreshes) per user per day. */
+  aiRequestsPerDay: number;
 }
 
 export const SUBSCRIPTION_PLANS: SubscriptionPlanMeta[] = [
@@ -257,6 +259,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlanMeta[] = [
     socialAccounts: 2,
     scheduledPostsPerMonth: 10,
     aiCampaignsPerMonth: 5,
+    aiRequestsPerDay: 20,
   },
   {
     id: "STARTER",
@@ -267,6 +270,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlanMeta[] = [
     socialAccounts: 4,
     scheduledPostsPerMonth: 60,
     aiCampaignsPerMonth: 50,
+    aiRequestsPerDay: 60,
   },
   {
     id: "BUSINESS",
@@ -277,6 +281,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlanMeta[] = [
     socialAccounts: 8,
     scheduledPostsPerMonth: 150,
     aiCampaignsPerMonth: 120,
+    aiRequestsPerDay: 120,
   },
   {
     id: "PRO",
@@ -287,6 +292,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlanMeta[] = [
     socialAccounts: 20,
     scheduledPostsPerMonth: 500,
     aiCampaignsPerMonth: 400,
+    aiRequestsPerDay: 300,
   },
 ];
 

@@ -1,31 +1,49 @@
 /**
  * Per-user AI rate limit (migration 009), shared by the assistant route and
  * recommendation generation. Server-only.
+ *
+ * Only language-model calls count: callers check usesModel() first, and
+ * guided (rules-based) answers are free. The daily cap comes from the
+ * business's plan (SUBSCRIPTION_PLANS.aiRequestsPerDay).
  */
 
+import type { SubscriptionPlan } from "@/types";
+import { SUBSCRIPTION_PLANS } from "@/constants";
 import { createServerClient } from "@/lib/supabase/server";
 
-/** Per signed-in user; every AI request counts (model or guided). */
-export const AI_LIMITS = { perMinute: 8, perDay: 100 };
+const PER_MINUTE = 6;
+
+/** Daily model calls for a plan (the Free plan's when unknown). */
+export function aiRequestsPerDay(plan?: SubscriptionPlan): number {
+  const meta = SUBSCRIPTION_PLANS.find((p) => p.id === plan) ?? SUBSCRIPTION_PLANS[0];
+  return meta.aiRequestsPerDay;
+}
 
 export type RateLimitResult =
   | { allowed: true }
-  | { allowed: false; retryAfter: number; message: string };
+  | { allowed: false; retryAfter: number; message: string; unavailable?: boolean };
 
 /**
  * Records one AI request for the signed-in user and says whether it's
- * allowed. Fails open (allowed) if the limiter itself is unavailable, e.g.
- * migration 009 not applied — the error is logged.
+ * allowed. Fails closed if the limiter itself is unavailable (e.g. migration
+ * 009 not applied): `unavailable` is set so callers can answer from the
+ * guided engine instead of the model.
  */
-export async function consumeAiRequest(): Promise<RateLimitResult> {
+export async function consumeAiRequest(plan?: SubscriptionPlan): Promise<RateLimitResult> {
+  const perDay = aiRequestsPerDay(plan);
   const supabase = await createServerClient();
   const { data, error } = await supabase.rpc("consume_ai_request", {
-    per_minute: AI_LIMITS.perMinute,
-    per_day: AI_LIMITS.perDay,
+    per_minute: PER_MINUTE,
+    per_day: perDay,
   });
   if (error) {
-    console.error("AI rate limiter unavailable — is migration 009 applied?", error.message);
-    return { allowed: true };
+    console.error("AI rate limiter unavailable — is migration 009 applied? Using guided mode.", error.message);
+    return {
+      allowed: false,
+      unavailable: true,
+      retryAfter: 60,
+      message: "Keh's AI is unavailable right now. Please try again later.",
+    };
   }
 
   const result = data?.[0];
@@ -35,6 +53,6 @@ export async function consumeAiRequest(): Promise<RateLimitResult> {
   const message =
     retryAfter <= 60
       ? `You're asking quickly — give Keh ${retryAfter} second${retryAfter === 1 ? "" : "s"} and try again.`
-      : `You've reached today's limit of ${AI_LIMITS.perDay} AI requests. It resets within ${Math.ceil(retryAfter / 3600)} hours.`;
+      : `You've reached today's limit of ${perDay} AI requests on your plan. It resets within ${Math.ceil(retryAfter / 3600)} hours.`;
   return { allowed: false, retryAfter, message };
 }

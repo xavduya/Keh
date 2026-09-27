@@ -11,7 +11,7 @@ import { PostStatusBadge } from "@/components/ui/post-status-badge";
 import { getPosts } from "@/services/campaign.service";
 import { getProducts } from "@/services/product.service";
 import { findings, insights, periodSummary, postDateKey, recommendNextMove } from "@/lib/analytics";
-import { getRecommendations, recommendationsAreStale } from "@/services/recommendation.service";
+import { getRecommendationState } from "@/services/recommendation.service";
 import { RecommendationCard, type RecommendationCardData } from "@/components/dashboard/RecommendationCard";
 import { toCardData } from "@/utils/recommendations";
 import { getConnectedAccounts } from "@/services/social-account.service";
@@ -81,11 +81,11 @@ const QUICK_ACTIONS: { label: string; icon: typeof Package; goal?: CampaignGoal 
 
 export default async function DashboardPage() {
   const { user, business } = await getCurrentContext();
-  const [posts, products, connectedAccounts, recommendations] = await Promise.all([
+  const [posts, products, connectedAccounts, { recommendations, stale }] = await Promise.all([
     getPosts(business.id),
     getProducts(business.id),
     getConnectedAccounts(business.id),
-    getRecommendations(business.id),
+    getRecommendationState(business.id),
   ]);
   const firstName = user.fullName.split(" ")[0];
 
@@ -133,7 +133,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4">
 
         {/* Recommendation card */}
-        <RecommendationCard data={card} stale={recommendationsAreStale(recommendations)} />
+        <RecommendationCard data={card} stale={stale} />
 
         {/* Quick actions */}
         <div className="bg-white rounded-[12px] border border-[#e9e9ef] p-5">

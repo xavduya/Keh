@@ -11,6 +11,15 @@
  * must return the model's raw JSON text, or null on any failure (quota,
  * timeout, blocked output…). Nothing here throws.
  *
+ * Keeping usage down:
+ *   - Thinking is capped (GEMINI_THINKING_LEVEL, default "low") and each
+ *     caller sets its own output-token budget.
+ *   - One request makes at most MAX_ATTEMPTS upstream calls, with no retry of
+ *     the same model. A model that answered 429/404/5xx is skipped for a
+ *     while (see cooldowns) instead of being asked again on the next request.
+ *   - Every call logs its token usage as "[ai] <label> …" so you can see
+ *     where tokens go.
+ *
  * Note: on Gemini's free tier, Google may use prompts and responses to
  * improve its products — don't send data you wouldn't share.
  */
@@ -24,11 +33,18 @@ export interface ChatTurn {
 
 export type ProviderName = "gemini" | "openai";
 
+export interface GenerateOptions {
+  /** Tag for the usage log, e.g. "chat:captions" or "recommendations". */
+  label: string;
+  /** Output budget (for Gemini this includes any thinking tokens). */
+  maxOutputTokens: number;
+  /** JSON Schema the reply must follow (structured output). */
+  schema?: { name: string; schema: Record<string, unknown> };
+}
+
 const TIMEOUT_MS = 30_000;
-/** "Overloaded"/server errors: worth one quick retry on the same model. */
-const RETRYABLE_STATUS = new Set([500, 502, 503, 504]);
-/** Also move on to the next model on quota (429) or a retired model (404). */
-const NEXT_MODEL_STATUS = new Set([...RETRYABLE_STATUS, 429, 404]);
+/** Upstream calls per request: the first available model plus one fallback. */
+const MAX_ATTEMPTS = 2;
 const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
 /** Other free-tier models, tried in order when the main one is busy. */
 const DEFAULT_GEMINI_FALLBACKS = "gemini-3.7-flash,gemini-3.6-flash";
@@ -41,11 +57,26 @@ export function activeProvider(): ProviderName | null {
 }
 
 /** Asks the configured model for a JSON reply. Returns its text, or null. */
-export async function generateJson(system: string, turns: ChatTurn[]): Promise<string | null> {
+export async function generateJson(
+  system: string,
+  turns: ChatTurn[],
+  options: GenerateOptions
+): Promise<string | null> {
   const provider = activeProvider();
-  if (provider === "gemini") return callGemini(system, turns);
-  if (provider === "openai") return callOpenAI(system, turns);
+  if (provider === "gemini") return callGemini(system, turns, options);
+  if (provider === "openai") return callOpenAI(system, turns, options);
   return null;
+}
+
+function logUsage(
+  label: string,
+  model: string,
+  started: number,
+  usage: { input?: number; output?: number; thinking?: number; total?: number }
+) {
+  console.info(
+    `[ai] ${label} ${model} in=${usage.input ?? "?"} out=${usage.output ?? "?"} thinking=${usage.thinking ?? 0} total=${usage.total ?? "?"} (${((Date.now() - started) / 1000).toFixed(1)}s)`
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,7 +97,27 @@ const GeminiResponseSchema = z.object({
     )
     .optional(),
   promptFeedback: z.object({ blockReason: z.string().optional() }).optional(),
+  usageMetadata: z
+    .object({
+      promptTokenCount: z.number().optional(),
+      candidatesTokenCount: z.number().optional(),
+      thoughtsTokenCount: z.number().optional(),
+      totalTokenCount: z.number().optional(),
+    })
+    .optional(),
 });
+
+/**
+ * Models that recently failed, and until when (epoch ms) they are skipped.
+ * Per server process, which is enough to stop hammering a model that is out
+ * of quota or overloaded.
+ */
+const cooldowns = new Map<string, number>();
+const HOUR_MS = 3_600_000;
+
+function coolDown(model: string, ms: number) {
+  cooldowns.set(model, Date.now() + ms);
+}
 
 /**
  * Gemini expects the conversation to start with the user and alternate
@@ -85,80 +136,118 @@ function toGeminiContents(turns: ChatTurn[]) {
   return contents;
 }
 
-/** Main model first, then the fallbacks (comma-separated, deduplicated). */
+/** Main model first, then the fallbacks (comma-separated, deduplicated), minus any cooling down. */
 function geminiModels(): string[] {
   const primary = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
   const fallbacks = (process.env.GEMINI_FALLBACK_MODELS ?? DEFAULT_GEMINI_FALLBACKS)
     .split(",")
     .map((m) => m.trim())
     .filter(Boolean);
-  return [...new Set([primary, ...fallbacks])];
+  const now = Date.now();
+  return [...new Set([primary, ...fallbacks])].filter((m) => (cooldowns.get(m) ?? 0) <= now);
 }
 
-async function callGemini(system: string, turns: ChatTurn[]): Promise<string | null> {
-  const body = JSON.stringify({
-    systemInstruction: { parts: [{ text: system }] },
-    contents: toGeminiContents(turns),
-    generationConfig: {
-      responseMimeType: "application/json",
-      temperature: 0.8,
-      // Generous: newer models spend part of this budget on thinking.
-      maxOutputTokens: 8192,
-    },
-  });
-  // One deadline for every model and retry, so the owner never waits > 30 s.
+/**
+ * Caps thinking, which is billed as output. Gemini 3.x takes a level
+ * (GEMINI_THINKING_LEVEL: minimal | low | medium | high; "minimal" isn't
+ * available on Pro models); 2.x Flash takes a token budget (0 = off).
+ */
+function thinkingConfig(model: string): Record<string, unknown> | undefined {
+  if (/^gemini-2\./.test(model)) return model.includes("flash") ? { thinkingBudget: 0 } : undefined;
+  return { thinkingLevel: process.env.GEMINI_THINKING_LEVEL || "low" };
+}
+
+/** How long Google asks us to wait (RetryInfo "37s"), in ms. */
+function retryDelayMs(detail: unknown): number | null {
+  const details = (detail as { error?: { details?: { retryDelay?: string }[] } })?.error?.details ?? [];
+  const delay = details.find((d) => typeof d.retryDelay === "string")?.retryDelay;
+  const seconds = delay ? Number.parseFloat(delay) : NaN;
+  return Number.isFinite(seconds) ? seconds * 1000 : null;
+}
+
+/** True when a 429 is the daily quota (not the per-minute one). */
+function isDailyQuota(detail: unknown): boolean {
+  return /PerDay/i.test(JSON.stringify(detail ?? ""));
+}
+
+async function callGemini(system: string, turns: ChatTurn[], options: GenerateOptions): Promise<string | null> {
+  const models = geminiModels().slice(0, MAX_ATTEMPTS);
+  if (models.length === 0) {
+    console.warn(`[ai] ${options.label}: every Gemini model is cooling down after errors; using guided mode.`);
+    return null;
+  }
+  // One deadline for every attempt, so the owner never waits > 30 s.
   const signal = AbortSignal.timeout(TIMEOUT_MS);
-  const models = geminiModels();
 
   try {
     for (const [index, model] of models.entries()) {
-      // The main model gets one quick retry; fallbacks get a single try.
-      const attempts = index === 0 ? 2 : 1;
-      for (let attempt = 1; attempt <= attempts; attempt++) {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-          {
-            method: "POST",
-            headers: {
-              "x-goog-api-key": process.env.GEMINI_API_KEY!,
-              "Content-Type": "application/json",
+      const started = Date.now();
+      const thinking = thinkingConfig(model);
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+        {
+          method: "POST",
+          headers: {
+            "x-goog-api-key": process.env.GEMINI_API_KEY!,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: system }] },
+            contents: toGeminiContents(turns),
+            generationConfig: {
+              responseMimeType: "application/json",
+              ...(options.schema && { responseJsonSchema: options.schema.schema }),
+              temperature: 0.8,
+              maxOutputTokens: options.maxOutputTokens,
+              ...(thinking && { thinkingConfig: thinking }),
             },
-            body,
-            signal,
-          }
-        );
-
-        if (response.ok) return readGeminiText(model, await response.json());
-
-        const detail = await response.json().catch(() => null);
-        const reason = `${response.status} ${detail?.error?.status ?? ""}`.trim();
-        if (RETRYABLE_STATUS.has(response.status) && attempt < attempts) {
-          console.warn(`Gemini (${model}) busy (${reason}); retrying.`);
-          await new Promise((resolve) => setTimeout(resolve, 800));
-          continue;
+          }),
+          signal,
         }
-        if (NEXT_MODEL_STATUS.has(response.status) && index < models.length - 1) {
-          console.warn(`Gemini (${model}) unavailable (${reason}); trying ${models[index + 1]}.`);
-          break;
-        }
-        console.warn(`Gemini (${model}) request failed: ${reason} ${detail?.error?.message?.slice(0, 200) ?? ""}`);
+      );
+
+      if (response.ok) return readGeminiText(options.label, model, started, await response.json());
+
+      const detail = await response.json().catch(() => null);
+      const reason = `${response.status} ${detail?.error?.status ?? ""}`.trim();
+      if (response.status === 429) {
+        const daily = isDailyQuota(detail);
+        coolDown(model, daily ? HOUR_MS : (retryDelayMs(detail) ?? 60_000));
+        console.warn(`[ai] ${options.label} ${model}: ${daily ? "daily" : "per-minute"} quota reached; skipping it for a while.`);
+      } else if (response.status === 404) {
+        coolDown(model, HOUR_MS);
+        console.warn(`[ai] ${options.label} ${model}: model not found (retired?); skipping it for an hour.`);
+      } else if (response.status >= 500) {
+        coolDown(model, 20_000);
+        console.warn(`[ai] ${options.label} ${model}: busy (${reason}).`);
+      } else {
+        // 400 etc.: another model won't do better with the same request.
+        console.warn(`[ai] ${options.label} ${model} request failed: ${reason} ${detail?.error?.message?.slice(0, 200) ?? ""}`);
         return null;
       }
+      if (index < models.length - 1) console.warn(`[ai] ${options.label}: trying ${models[index + 1]}.`);
     }
     return null;
   } catch (error) {
-    console.error("Gemini call failed.", error);
+    console.error(`[ai] ${options.label}: Gemini call failed.`, error);
     return null;
   }
 }
 
 /** The answer text from a generateContent reply ("thought" parts skipped), or null. */
-function readGeminiText(model: string, json: unknown): string | null {
+function readGeminiText(label: string, model: string, started: number, json: unknown): string | null {
   const parsed = GeminiResponseSchema.safeParse(json);
   if (!parsed.success) return null;
+  const usage = parsed.data.usageMetadata;
+  logUsage(label, model, started, {
+    input: usage?.promptTokenCount,
+    output: usage?.candidatesTokenCount,
+    thinking: usage?.thoughtsTokenCount,
+    total: usage?.totalTokenCount,
+  });
   const candidate = parsed.data.candidates?.[0];
   if (!candidate) {
-    console.warn(`Gemini (${model}) returned no answer (${parsed.data.promptFeedback?.blockReason ?? "unknown reason"}).`);
+    console.warn(`[ai] ${label} ${model} returned no answer (${parsed.data.promptFeedback?.blockReason ?? "unknown reason"}).`);
     return null;
   }
   const text = (candidate.content?.parts ?? [])
@@ -167,8 +256,11 @@ function readGeminiText(model: string, json: unknown): string | null {
     .join("")
     .trim();
   if (!text) {
-    console.warn(`Gemini (${model}) returned an empty answer (finishReason: ${candidate.finishReason ?? "?"}).`);
+    console.warn(`[ai] ${label} ${model} returned an empty answer (finishReason: ${candidate.finishReason ?? "?"}).`);
     return null;
+  }
+  if (candidate.finishReason === "MAX_TOKENS") {
+    console.warn(`[ai] ${label} ${model} hit its output-token budget; the reply may be cut off.`);
   }
   return text;
 }
@@ -179,9 +271,19 @@ function readGeminiText(model: string, json: unknown): string | null {
 
 const OpenAIResponseSchema = z.object({
   choices: z.array(z.object({ message: z.object({ content: z.string().nullable() }) })),
+  usage: z
+    .object({
+      prompt_tokens: z.number().optional(),
+      completion_tokens: z.number().optional(),
+      total_tokens: z.number().optional(),
+      completion_tokens_details: z.object({ reasoning_tokens: z.number().optional() }).optional(),
+    })
+    .optional(),
 });
 
-async function callOpenAI(system: string, turns: ChatTurn[]): Promise<string | null> {
+async function callOpenAI(system: string, turns: ChatTurn[], options: GenerateOptions): Promise<string | null> {
+  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+  const started = Date.now();
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -190,10 +292,12 @@ async function callOpenAI(system: string, turns: ChatTurn[]): Promise<string | n
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+        model,
         messages: [{ role: "system", content: system }, ...turns],
-        response_format: { type: "json_object" },
-        max_tokens: 2000,
+        response_format: options.schema
+          ? { type: "json_schema", json_schema: { name: options.schema.name, schema: options.schema.schema, strict: false } }
+          : { type: "json_object" },
+        max_tokens: options.maxOutputTokens,
         temperature: 0.8,
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -201,15 +305,22 @@ async function callOpenAI(system: string, turns: ChatTurn[]): Promise<string | n
 
     if (!response.ok) {
       const detail = await response.json().catch(() => null);
-      console.warn(`OpenAI request failed: ${response.status} ${detail?.error?.code ?? ""}`);
+      console.warn(`[ai] ${options.label} ${model} request failed: ${response.status} ${detail?.error?.code ?? ""}`);
       return null;
     }
 
     const parsed = OpenAIResponseSchema.safeParse(await response.json());
-    const text = parsed.success ? parsed.data.choices[0]?.message.content?.trim() : undefined;
-    return text || null;
+    if (!parsed.success) return null;
+    const usage = parsed.data.usage;
+    logUsage(options.label, model, started, {
+      input: usage?.prompt_tokens,
+      output: usage?.completion_tokens,
+      thinking: usage?.completion_tokens_details?.reasoning_tokens,
+      total: usage?.total_tokens,
+    });
+    return parsed.data.choices[0]?.message.content?.trim() || null;
   } catch (error) {
-    console.error("OpenAI call failed.", error);
+    console.error(`[ai] ${options.label}: OpenAI call failed.`, error);
     return null;
   }
 }

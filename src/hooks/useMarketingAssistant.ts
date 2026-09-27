@@ -17,8 +17,8 @@ import type {
   MarketingCampaignAction,
 } from "@/types";
 
-/** Messages sent back as conversation history (the API accepts up to 8). */
-const HISTORY_LENGTH = 6;
+/** Messages sent back as conversation history (the API accepts up to 8; the model sees 4). */
+const HISTORY_LENGTH = 4;
 
 export interface AskOptions {
   intent?: AssistantIntent;
@@ -51,7 +51,7 @@ export function useMarketingAssistant({
       setLoading(true);
       const history = messagesRef.current
         .slice(-HISTORY_LENGTH)
-        .map(({ role, content }) => ({ role, content: content.slice(0, 2000) }));
+        .map(({ role, content }) => ({ role, content: content.slice(0, 800) }));
       setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", content: text }]);
 
       try {

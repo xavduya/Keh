@@ -3,12 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentContext } from "@/lib/auth/context";
 import { buildMarketingContext } from "@/lib/ai/context";
+import { activeProvider } from "@/lib/ai/providers";
 import { consumeAiRequest } from "@/lib/ai/rate-limit";
 import { generateRecommendations } from "@/lib/ai/recommendations";
+import { getSubscription } from "@/services/business.service";
 import {
   dismissRecommendation as dismiss,
-  getRecommendations,
-  recommendationsAreStale,
+  getRecommendationState,
+  RECOMMENDATION_REFRESH_COOLDOWN_MINUTES,
   replaceRecommendations,
 } from "@/services/recommendation.service";
 
@@ -20,25 +22,40 @@ function revalidate() {
 }
 
 /**
- * Generates this week's recommendations. Without `force`, only when the
- * current ones are missing or over a week old (called automatically by the
- * pages); with `force` ("New ideas"), always.
+ * Generates this week's recommendations. Without `force`, only when they're
+ * due (called automatically by the pages); with `force` ("New ideas"), at
+ * most once per RECOMMENDATION_REFRESH_COOLDOWN_MINUTES.
  */
 export async function refreshRecommendations({ force = false } = {}): Promise<RefreshResult> {
   const { business } = await getCurrentContext();
 
-  if (!force && !recommendationsAreStale(await getRecommendations(business.id))) {
-    return { updated: false };
+  const state = await getRecommendationState(business.id);
+  if (!force && !state.stale) return { updated: false };
+  if (force && state.lastGeneratedAt) {
+    const minutesAgo = (Date.now() - new Date(state.lastGeneratedAt).getTime()) / 60_000;
+    if (minutesAgo < RECOMMENDATION_REFRESH_COOLDOWN_MINUTES) {
+      const wait = Math.ceil(RECOMMENDATION_REFRESH_COOLDOWN_MINUTES - minutesAgo);
+      return {
+        updated: false,
+        error: `Keh wrote these ideas ${Math.max(1, Math.floor(minutesAgo))} min ago. You can ask for new ones in ${wait} min.`,
+      };
+    }
   }
 
-  const limit = await consumeAiRequest();
-  if (!limit.allowed) {
-    return { updated: false, error: force ? limit.message : undefined };
+  // Only a model call counts against the plan's limit; rules are free.
+  let allowModel = activeProvider() !== null;
+  if (allowModel) {
+    const subscription = await getSubscription(business.id).catch(() => null);
+    const limit = await consumeAiRequest(subscription?.plan);
+    if (!limit.allowed && !limit.unavailable) {
+      return { updated: false, error: force ? limit.message : undefined };
+    }
+    allowModel = limit.allowed;
   }
 
   try {
     const data = await buildMarketingContext(business);
-    const recommendations = await generateRecommendations(data);
+    const recommendations = await generateRecommendations(data, { allowModel });
     await replaceRecommendations(business.id, recommendations);
   } catch (err) {
     console.error("refreshRecommendations failed", err);
