@@ -306,15 +306,22 @@ export default async function DashboardPage() {
               </Link>
             </div>
             <div className="flex gap-2 mb-2">
-              {(["FACEBOOK", "INSTAGRAM", "TIKTOK"] as const).map((p) => (
-                <div key={p} className="relative">
-                  <SocialPlatformBadge platform={p} size="md" />
-                  <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#23876c] border-2 border-white" />
-                </div>
-              ))}
+              {(["FACEBOOK", "INSTAGRAM", "TIKTOK"] as const).map((p) => {
+                const isConnected = connectedAccounts.some((a) => a.platform === p);
+                return (
+                  <div key={p} className={`relative ${isConnected ? "" : "opacity-40"}`} title={isConnected ? "Connected" : "Not connected"}>
+                    <SocialPlatformBadge platform={p} size="md" />
+                    {isConnected && (
+                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#23876c] border-2 border-white" />
+                    )}
+                  </div>
+                );
+              })}
             </div>
             <p className="text-[12px] text-[#7b7b8b]">
-              {connectedCount} accounts connected · Sample sync just now
+              {connectedCount === 0
+                ? "No accounts connected yet"
+                : `${connectedCount} of 3 accounts connected`}
             </p>
           </div>
         </div>

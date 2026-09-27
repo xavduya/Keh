@@ -33,3 +33,19 @@ export const publicEnv = {
 export function getSupabaseSecretKey(): string {
   return required("SUPABASE_SECRET_KEY", process.env.SUPABASE_SECRET_KEY);
 }
+
+/** Meta (Facebook / Instagram) app credentials are set. */
+export function isMetaConfigured(): boolean {
+  return Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET);
+}
+
+/**
+ * Meta app credentials for the Facebook / Instagram OAuth flow.
+ * Server-only: the app secret must never reach the browser.
+ */
+export function getMetaCredentials(): { appId: string; appSecret: string } {
+  return {
+    appId: required("META_APP_ID", process.env.META_APP_ID),
+    appSecret: required("META_APP_SECRET", process.env.META_APP_SECRET),
+  };
+}

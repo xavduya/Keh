@@ -45,7 +45,8 @@ src/
 │   ├── brand/         # server page → components/brand/BrandForm + actions.ts (saveBrandProfile)
 │   ├── analytics/     # server page → components/analytics/AnalyticsView (real posts + metrics)
 │   ├── assistant/     # server page → components/assistant/AssistantView (AI marketing manager chat)
-│   └── social-accounts, subscription, settings  # server pages, mostly mock data
+│   ├── social-accounts/ # server page → SocialAccountsManager + actions.ts (disconnect, connectTikTok)
+│   └── subscription, settings
 ├── app/api/assistant/ # POST route → generateMarketingAdvice (auth checked in the route; proxy lets it through)
 ├── app/page.tsx       # redirects to /dashboard
 ├── components/
@@ -129,7 +130,8 @@ There is no `error.tsx` / `loading.tsx` / `not-found.tsx` yet.
 ## Still mock / not wired
 
 - **Dashboard:** only the connected-accounts widget is still mock.
-- **Mock pages:** social accounts (connect/disconnect is local state), settings (toggles do nothing). Subscription shows the real plan and usage; upgrading isn't wired.
+- **Mock pages:** settings (toggles do nothing). Subscription shows the real plan and usage; upgrading isn't wired.
+- **Social accounts:** Facebook/Instagram connect via Meta OAuth (`/api/social/connect/[platform]` → `/auth/social/callback`, needs `META_APP_ID`/`META_APP_SECRET` and the callback URL registered in the Meta app); `state` carries a nonce checked against an httpOnly cookie (`lib/social/oauth-state.ts`). TikTok is manual (username only). Tokens are written/cleared only with the secret key; reads select explicit safe columns (`select("*")` on `social_accounts` fails with 42501 because of migration 007). Nothing publishes to the platforms yet and page tokens aren't refreshed.
 - **Unwired controls:** content Reuse/Duplicate/Edit, calendar post chips and week view, "Why this recommendation?", notifications bell, subscription Upgrade/Manage. There's no campaign edit/delete and no product delete yet.
 - **Metrics:** nothing collects real platform metrics yet. `getPosts()` reads the latest `post_metrics` row per post (0 when missing); for demos, `npm run seed:demo` backfills published posts with generated metrics. Insights and the Home recommendation are template text from `lib/analytics.ts`, not AI.
 
