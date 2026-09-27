@@ -20,59 +20,31 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { HintBox } from "@/components/ui/hint-box";
-import type {
-  AIRecommendation,
-  Business,
-  MarketingCampaignAction,
-  MarketingIdea,
-} from "@/types";
+import { useMarketingAssistant } from "@/hooks/useMarketingAssistant";
+import type { AIRecommendation, AssistantIntent, Business, MarketingCampaignAction, MarketingIdea } from "@/types";
 
-type ChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  mode?: "openai" | "guided";
-  action?: MarketingCampaignAction;
-  ideas?: MarketingIdea[];
-};
-
-type AssistantResponse = {
-  answer: string;
-  mode: "openai" | "guided";
-  action?: MarketingCampaignAction;
-  ideas?: MarketingIdea[];
-};
-
-const STARTER_PROMPTS = [
-  "💡 Give me 3 high-converting campaign ideas",
-  "🎯 Fill out a weekend promo campaign for our best product",
-  "✍️ Write engaging captions for Facebook and Instagram",
-  "⏰ What is the best date and time to publish our next post?",
+const STARTER_PROMPTS: { label: string; text: string; intent: AssistantIntent }[] = [
+  {
+    label: "💡 Give me 3 high-converting campaign ideas",
+    text: "Give me 3 high-converting campaign ideas",
+    intent: "ideas",
+  },
+  {
+    label: "🎯 Fill out a weekend promo campaign for our best product",
+    text: "Fill out a weekend promo campaign for our best product",
+    intent: "fill",
+  },
+  {
+    label: "✍️ Write engaging captions for Facebook and Instagram",
+    text: "Write engaging captions for Facebook and Instagram",
+    intent: "captions",
+  },
+  {
+    label: "⏰ What is the best date and time to publish our next post?",
+    text: "What is the best date and time to publish our next post?",
+    intent: "schedule",
+  },
 ];
-
-function isAssistantResponse(value: unknown): value is AssistantResponse {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "answer" in value &&
-    typeof (value as AssistantResponse).answer === "string" &&
-    "mode" in value &&
-    ((value as AssistantResponse).mode === "openai" ||
-      (value as AssistantResponse).mode === "guided")
-  );
-}
-
-function getResponseError(value: unknown) {
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "error" in value &&
-    typeof value.error === "string"
-  ) {
-    return value.error;
-  }
-  return "Keh couldn't prepare advice right now. Please try again.";
-}
 
 export function AssistantView({
   recommendations,
@@ -86,95 +58,21 @@ export function AssistantView({
   productCount: number;
 }) {
   const router = useRouter();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { messages, ask, loading, error } = useMarketingAssistant();
   const [question, setQuestion] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [assistantMode, setAssistantMode] = useState<
-    "openai" | "guided" | null
-  >(null);
 
-  async function handleAsk(promptToSend?: string, intent?: string) {
-    const prompt = (promptToSend || question).trim();
-    if (!prompt || loading) return;
-
-    const previousMessages = messages;
-    const history = previousMessages.slice(-8).map(({ role, content }) => ({
-      role,
-      content,
-    }));
-    const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: prompt,
-    };
-
-    setError("");
-    setLoading(true);
-    setMessages([...previousMessages, userMessage]);
-    if (!promptToSend) setQuestion("");
-
-    try {
-      const response = await fetch("/api/assistant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question: prompt,
-          history,
-          actionIntent: intent || "chat",
-        }),
-      });
-      const result: unknown = await response.json();
-      if (!response.ok) throw new Error(getResponseError(result));
-      if (!isAssistantResponse(result)) {
-        throw new Error("Keh returned an unexpected response. Please try again.");
-      }
-
-      setMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: result.answer,
-          mode: result.mode,
-          action: result.action,
-          ideas: result.ideas,
-        },
-      ]);
-      setAssistantMode(result.mode);
-
-      // If fields were filled by AI, save in sessionStorage so wizard has it ready
-      if (result.action?.draftUpdates) {
-        sessionStorage.setItem(
-          "keh_pending_ai_campaign",
-          JSON.stringify({
-            draftUpdates: result.action.draftUpdates,
-            changes: result.action.changes,
-            summary: result.action.summary,
-            suggestedStep: result.action.suggestedStep,
-          })
-        );
-      }
-    } catch (requestError) {
-      setMessages(previousMessages);
-      setQuestion(prompt);
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Keh couldn't prepare advice right now. Please try again."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+  const assistantMode = [...messages].reverse().find((m) => m.role === "assistant")?.mode ?? null;
 
   function handleSubmitForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    handleAsk();
+    const value = question.trim();
+    if (!value) return;
+    setQuestion("");
+    ask(value, { intent: "chat" });
   }
 
   function handleLaunchWizard(action?: MarketingCampaignAction) {
-    if (action?.draftUpdates) {
+    if (action) {
       sessionStorage.setItem(
         "keh_pending_ai_campaign",
         JSON.stringify({
@@ -189,10 +87,9 @@ export function AssistantView({
   }
 
   function handleApplyIdea(idea: MarketingIdea) {
-    handleAsk(
-      `Fill out a campaign for ${idea.title} with offer: ${idea.suggestedPromotion || "special promotion"}`,
-      "fill"
-    );
+    ask(`Fill out a campaign for ${idea.title} with offer: ${idea.suggestedPromotion || "special promotion"}`, {
+      intent: "fill",
+    });
   }
 
   return (
@@ -216,15 +113,11 @@ export function AssistantView({
           <div className="border-b border-[#e9e9ef] px-5 py-4 sm:px-6">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2
-                  id="ask-keh-heading"
-                  className="font-heading text-[18px] font-[750] text-[#262535]"
-                >
+                <h2 id="ask-keh-heading" className="font-heading text-[18px] font-[750] text-[#262535]">
                   Plan your next move
                 </h2>
                 <p className="mt-1 text-[13px] text-[#7b7b8b]">
-                  Ask for campaign ideas, captions, or ask Keh to fill in the
-                  campaign fields directly.
+                  Ask for campaign ideas, captions, or ask Keh to fill in the campaign fields directly.
                 </p>
               </div>
               <span className="hidden shrink-0 items-center gap-1.5 rounded-full bg-[#f7f8fb] px-2.5 py-1 text-[11px] font-[600] text-[#626274] sm:inline-flex">
@@ -252,19 +145,18 @@ export function AssistantView({
                   What are you working on?
                 </h3>
                 <p className="mt-1 max-w-[500px] text-[13px] leading-relaxed text-[#7b7b8b]">
-                  Keh can brainstorm campaign ideas, draft platform-specific
-                  captions, and take control of the in-website posting process by
-                  filling in your campaign fields automatically.
+                  Keh can brainstorm campaign ideas, draft platform-specific captions, and take control of
+                  the in-website posting process by filling in your campaign fields automatically.
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {STARTER_PROMPTS.map((prompt) => (
+                  {STARTER_PROMPTS.map((p) => (
                     <button
-                      key={prompt}
+                      key={p.label}
                       type="button"
-                      onClick={() => handleAsk(prompt)}
+                      onClick={() => ask(p.text, { intent: p.intent })}
                       className="rounded-full border border-[#e9e9ef] px-3 py-1.5 text-left text-[12px] font-[500] text-[#4f4e60] transition-colors hover:border-[#c5bdf5] hover:bg-[#faf9ff]"
                     >
-                      {prompt}
+                      {p.label}
                     </button>
                   ))}
                 </div>
@@ -273,9 +165,7 @@ export function AssistantView({
               messages.map((message) => (
                 <article
                   key={message.id}
-                  className={`flex gap-3 ${
-                    message.role === "user" ? "justify-end" : "justify-start"
-                  }`}
+                  className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   {message.role === "assistant" && (
                     <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#f0edff] text-[#5849da]">
@@ -292,22 +182,16 @@ export function AssistantView({
                     <div className="mb-1 flex items-center gap-2">
                       <span
                         className={`text-[11px] font-[700] ${
-                          message.role === "user"
-                            ? "text-white/75"
-                            : "text-[#5849da]"
+                          message.role === "user" ? "text-white/75" : "text-[#5849da]"
                         }`}
                       >
                         {message.role === "user" ? "You" : "Keh Marketing Manager"}
                       </span>
                       {message.mode === "guided" && (
-                        <span className="text-[10px] text-[#7b7b8b]">
-                          Guided mode
-                        </span>
+                        <span className="text-[10px] text-[#7b7b8b]">Guided mode</span>
                       )}
                     </div>
-                    <p className="whitespace-pre-wrap text-[13px] leading-relaxed">
-                      {message.content}
-                    </p>
+                    <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{message.content}</p>
 
                     {/* Action Changes Notification Pill & Launch Button */}
                     {message.action && (
@@ -324,15 +208,9 @@ export function AssistantView({
                         <ul className="mt-2 space-y-1.5 text-[12px]">
                           {message.action.changes.map((c) => (
                             <li key={c.field} className="text-[#4f4e60]">
-                              <span className="font-[600] text-[#262535]">
-                                • {c.label}:
-                              </span>{" "}
-                              {Array.isArray(c.newValue)
-                                ? c.newValue.join(", ")
-                                : c.newValue}{" "}
-                              <span className="text-[11px] text-[#7b7b8b]">
-                                ({c.reason})
-                              </span>
+                              <span className="font-[600] text-[#262535]">• {c.label}:</span>{" "}
+                              {Array.isArray(c.newValue) ? c.newValue.join(", ") : c.newValue}{" "}
+                              <span className="text-[11px] text-[#7b7b8b]">({c.reason})</span>
                             </li>
                           ))}
                         </ul>
@@ -363,9 +241,7 @@ export function AssistantView({
                                 <span className="rounded-md bg-[#f0edff] px-1.5 py-0.5 text-[10px] font-[700] text-[#5849da]">
                                   {idea.category}
                                 </span>
-                                <h4 className="mt-1 font-[700] text-[12px] text-[#262535]">
-                                  {idea.title}
-                                </h4>
+                                <h4 className="mt-1 font-[700] text-[12px] text-[#262535]">{idea.title}</h4>
                                 <p className="mt-0.5 text-[11px] text-[#6b6a7b] line-clamp-2">
                                   {idea.summary}
                                 </p>
@@ -397,10 +273,7 @@ export function AssistantView({
 
           <div className="border-t border-[#e9e9ef] px-5 py-4 sm:px-6">
             {error && (
-              <p
-                role="alert"
-                className="mb-3 flex items-start gap-2 text-[13px] text-[#b9382a]"
-              >
+              <p role="alert" className="mb-3 flex items-start gap-2 text-[13px] text-[#b9382a]">
                 <AlertCircle size={15} className="mt-0.5 shrink-0" />
                 {error}
               </p>
@@ -429,11 +302,7 @@ export function AssistantView({
                 disabled={!question.trim() || loading}
                 className="inline-flex h-11 shrink-0 items-center gap-2 rounded-[8px] bg-[#5849da] px-4 text-[13px] font-[600] text-white transition-colors hover:bg-[#4a3cc7] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {loading ? (
-                  <LoaderCircle size={15} className="animate-spin" />
-                ) : (
-                  <Send size={15} />
-                )}
+                {loading ? <LoaderCircle size={15} className="animate-spin" /> : <Send size={15} />}
                 <span className="hidden sm:inline">Ask Keh</span>
               </button>
             </form>
@@ -462,9 +331,7 @@ export function AssistantView({
             </div>
             <dl className="space-y-3 text-[13px]">
               <div>
-                <dt className="text-[11px] font-[600] uppercase tracking-wide text-[#8a8998]">
-                  Business
-                </dt>
+                <dt className="text-[11px] font-[600] uppercase tracking-wide text-[#8a8998]">Business</dt>
                 <dd className="mt-0.5 font-[600] text-[#262535]">
                   {business.industry || business.name}
                   {business.location ? ` · ${business.location}` : ""}
@@ -472,21 +339,15 @@ export function AssistantView({
               </div>
               {business.targetAudience && (
                 <div>
-                  <dt className="text-[11px] font-[600] uppercase tracking-wide text-[#8a8998]">
-                    Audience
-                  </dt>
-                  <dd className="mt-0.5 text-[#262535]">
-                    {business.targetAudience}
-                  </dd>
+                  <dt className="text-[11px] font-[600] uppercase tracking-wide text-[#8a8998]">Audience</dt>
+                  <dd className="mt-0.5 text-[#262535]">{business.targetAudience}</dd>
                 </div>
               )}
               <div>
                 <dt className="text-[11px] font-[600] uppercase tracking-wide text-[#8a8998]">
                   Products and services
                 </dt>
-                <dd className="mt-0.5 text-[#262535]">
-                  {productCount} in your catalog
-                </dd>
+                <dd className="mt-0.5 text-[#262535]">{productCount} in your catalog</dd>
               </div>
             </dl>
           </div>
@@ -523,10 +384,9 @@ export function AssistantView({
                     <button
                       type="button"
                       onClick={() =>
-                        handleAsk(
-                          `Turn this idea into a campaign: ${recommendation.title}. ${recommendation.explanation}`,
-                          "fill"
-                        )
+                        ask(`Turn this idea into a campaign: ${recommendation.title}. ${recommendation.explanation}`, {
+                          intent: "fill",
+                        })
                       }
                       className="mt-2 inline-flex items-center gap-1 text-[12px] font-[600] text-[#5849da] hover:underline"
                     >
@@ -541,26 +401,20 @@ export function AssistantView({
 
           {learnings.length > 0 && (
             <div className="rounded-[12px] border border-[#e9e9ef] bg-white p-5">
-              <h2 className="font-heading text-[15px] font-[750] text-[#262535]">
-                Audience notes
-              </h2>
+              <h2 className="font-heading text-[15px] font-[750] text-[#262535]">Audience notes</h2>
               <ul className="mt-3 space-y-2.5">
                 {learnings.slice(0, 3).map((learning) => (
                   <li
                     key={learning}
                     className="flex items-start gap-2 text-[12px] leading-relaxed text-[#4f4e60]"
                   >
-                    <Check
-                      size={14}
-                      className="mt-0.5 shrink-0 text-[#5849da]"
-                    />
+                    <Check size={14} className="mt-0.5 shrink-0 text-[#5849da]" />
                     {learning}
                   </li>
                 ))}
               </ul>
               <HintBox>
-                Treat these as starting points. Validate them against your own
-                account results.
+                Treat these as starting points. Validate them against your own account results.
               </HintBox>
             </div>
           )}
