@@ -206,6 +206,8 @@ export interface SocialPost {
   status: PostStatus;
   /** ID of the post on the external platform after publishing */
   externalPostId?: string;
+  /** Why publishing failed, in plain language (status FAILED). */
+  lastError?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

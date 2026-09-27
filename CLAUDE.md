@@ -6,7 +6,11 @@ Keh is an AI-powered social media management SaaS for **small business owners**.
 
 The app is a refactor of an earlier vanilla-JS prototype ("@Sites" / formerly "Suki"), built as a **hackathon MVP**: favour the smallest change that makes the core loop real over polish.
 
-**Core loop (working end to end on Supabase):** sign up → add a product → create a campaign in the wizard (optionally filled by the AI) → it appears in Campaigns, Calendar, Content and Home. The AI assistant, weekly recommendations, analytics (from `post_metrics`), brand profile, social account connections (Meta OAuth + TikTok username) and plan limits are all real. **Nothing is published to social platforms yet** — see "Known gaps".
+**Core loop (working end to end on Supabase):** sign up → add a product → create a campaign in the wizard (AI writes the captions) → it's scheduled and shows in Campaigns, Calendar, Content and Home. Campaigns can be edited, rescheduled and deleted.
+
+**Publishing is a placeholder in the MVP.** Posting to Facebook / Instagram (pg_cron job → `SocialPublisher` adapters) and hourly metrics collection are built but switched off unless `PUBLISHING_ENABLED=true`; with it off, "Schedule" and "Publish now" only save posts as `SCHEDULED`. Don't remove or rewire this code without asking — it's kept for when the team finishes publishing.
+
+**Deployment isn't decided** — no host chosen, nothing deployed. The README's "Deployment" section lists the requirements and options (note Vercel's ~4.5 MB request-body limit vs. our 5 MB photo uploads).
 
 The original audit and roadmap are in [docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) (gaps G1–G24); "Known gaps" below is the current list.
 
@@ -16,10 +20,11 @@ The original audit and roadmap are in [docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.m
 npm run dev        # dev server on http://localhost:3000 (also regenerates AGENTS.md)
 npm run build      # production build — the closest thing to a type check
 npm run lint       # ESLint (next core-web-vitals + typescript)
+npm test           # Vitest (src/**/*.test.ts); npm run test:watch while developing
 npm run seed:demo -- --email <owner>   # ~8 weeks of demo posts + metrics (--reset removes them)
 ```
 
-There is no test suite and no CI. Verify changes with `npm run build` + `npm run lint`, and by running the app. The `supabase` CLI is a dev dependency, but the project isn't linked (no `supabase/config.toml`).
+CI (`.github/workflows/ci.yml`) runs lint, tests and build on every PR. Tests cover pure logic and the platform adapters (Meta API mocked with a stubbed `fetch`); there are no end-to-end tests, so also check changes in the running app. The `supabase` CLI is a dev dependency, but the project isn't linked (no `supabase/config.toml`).
 
 **Line endings:** the repo is checked out with CRLF (`core.autocrlf=true`). The Edit tool handles this; scripted multi-line find/replace must normalise `\r\n` first or it silently won't match.
 
@@ -38,44 +43,49 @@ There is no test suite and no CI. Verify changes with `npm run build` + `npm run
 src/
 ├── app/
 │   ├── error.tsx, not-found.tsx       # last-resort error page (outside the app shell), 404
-│   ├── (auth)/                        # login, signup + actions.ts (login / signup / signOut)
+│   ├── (auth)/                        # login, signup, forgot-password, reset-password + actions.ts
 │   ├── (dashboard)/                   # signed-in app, shares DashboardLayout (sidebar, topbar, copilot, LiveRefresh)
 │   │   ├── error.tsx, loading.tsx     # error/loading states inside the app shell
 │   │   ├── dashboard/                 # Home: stats, today/tomorrow, recommendation card, insights
-│   │   ├── campaigns/ (+ new/)        # list + wizard; actions.ts (saveCampaign)
+│   │   ├── campaigns/ (+ new/, [id]/edit/)  # list + wizard; actions.ts (saveCampaign create/edit,
+│   │   │                              # removeCampaign, markTikTokPosted); wizard-business.ts
 │   │   ├── calendar/, content/        # month calendar, content library
-│   │   ├── products/                  # ProductsView + ProductDialog + PhotoPicker; actions.ts (saveProduct)
+│   │   ├── products/                  # ProductsView + ProductDialog + PhotoPicker; actions.ts (saveProduct, removeProduct)
 │   │   ├── analytics/                 # AnalyticsView (lib/analytics on real posts)
 │   │   ├── assistant/                 # AI chat page + recommendations + "What your results show"
 │   │   ├── brand/                     # BrandForm; actions.ts (saveBrandProfile)
-│   │   ├── social-accounts/           # connect/disconnect; actions.ts (disconnect, connectTikTok)
-│   │   ├── subscription/, settings/   # plan + usage (read-only); account + timezone
+│   │   ├── social-accounts/ (+ choose/)  # connect/disconnect, pick a Page; actions.ts
+│   │   ├── subscription/              # plan + usage (read-only)
+│   │   ├── settings/                  # account: password, email, delete account (actions.ts)
 │   │   └── recommendation-actions.ts  # refreshRecommendations, dismissRecommendation
 │   ├── api/assistant/                 # POST — AI chat (own auth check; see proxy.ts)
 │   ├── api/social/connect/[platform]/ # starts Meta OAuth (facebook | instagram)
-│   └── auth/callback, auth/social/callback  # email confirmation; Meta OAuth callback
+│   ├── api/cron/publish, api/cron/metrics   # jobs called by pg_cron (Bearer CRON_SECRET)
+│   └── auth/callback, auth/social/callback  # auth emails (with ?next=); Meta OAuth callback
 ├── components/                        # by feature: campaigns (wizard + WizardAiCopilot), assistant, dashboard,
 │                                      # analytics, brand, social-accounts, layout, auth, ui (shadcn + Keh primitives)
 ├── hooks/useMarketingAssistant.ts     # chat state + handing AI-filled campaigns to the wizard
 ├── services/                          # data access, all Supabase: business, product, campaign, analytics,
-│                                      # recommendation, social-account, storage
+│                                      # recommendation, social-account, storage, publishing (jobs), batch
 ├── lib/
 │   ├── ai/                            # ai.service (chat + guided engine), providers (Gemini/OpenAI),
 │   │                                  # context (what the AI knows), recommendations, rate-limit
 │   ├── analytics.ts                   # pure findings/insights/recommendedSlot from posts + metrics
 │   ├── auth/context.ts                # getCurrentContext() → { user, business }; redirects to /login
-│   ├── social/                        # oauth-state (CSRF nonce), connect-errors, publisher.interface (stub)
+│   ├── social/                        # meta (Graph API), publishers (Facebook, Instagram), publisher.interface,
+│                                      # token-crypto (AES-GCM), oauth-state (CSRF nonce, page pick), connect-errors
+│   ├── cron-auth.ts, request-origin.ts
 │   ├── supabase/                      # client.ts, server.ts (server + admin), database.types.ts (hand-written)
 │   └── validation/schemas.ts          # Zod schemas
 ├── types/index.ts                     # domain model (single source of truth for TS types)
 ├── constants/                         # platforms, statuses, goals, nav, SUBSCRIPTION_PLANS, DEFAULT_TIMEZONE…
 └── utils/                             # formatting, datetime (Manila-time helpers), recommendations
-supabase/migrations/                   # 001–005, 007–013 (there is no 006)
+supabase/migrations/                   # 001–005, 007–016 (there is no 006)
 supabase/seed.sql                      # old dev seed (was migration 006); prefer `npm run seed:demo`
 scripts/seed-demo-data.mjs             # demo history generator (secret key)
 ```
 
-**Auth flow:** `proxy.ts` refreshes the session and optimistically redirects signed-out users to `/login` (and signed-in users away from `/login`/`/signup`); `/auth/*` and `/api/assistant` are exempt. The authoritative check is `getCurrentContext()`, called by the `(dashboard)` layout, every server page and every Server Action. Never hard-code a business ID.
+**Auth flow:** `proxy.ts` refreshes the session and optimistically redirects signed-out users to `/login` (and signed-in users away from `/login`, `/signup`, `/forgot-password`); `/auth/*`, `/api/assistant` and `/api/cron/*` are exempt (they check auth themselves). Auth emails (confirm, reset password, change email) link to `/auth/callback?next=<path>`; `safeNextPath` only allows same-site paths. The authoritative check is `getCurrentContext()`, called by the `(dashboard)` layout, every server page and every Server Action. Never hard-code a business ID.
 
 ### Patterns to follow
 
@@ -96,13 +106,24 @@ scripts/seed-demo-data.mjs             # demo history generator (secret key)
 - **Cost controls:** `usesModel()` skips the model for "best time" and results questions (answered by the guided engine). Only model calls count against `consume_ai_request` (migration 009), capped per plan by `SUBSCRIPTION_PLANS[].aiRequestsPerDay`; if the limiter is unavailable it fails closed to guided mode. Providers cap thinking (`GEMINI_THINKING_LEVEL`), set per-task output budgets, send a JSON schema as structured output, make at most 2 upstream calls, and put failing models on a per-process cooldown. Every call logs `[ai] <label> <model> in=… out=… thinking=…`.
 - **Prompts send only what the intent needs** (`promptContext` in `ai.service.ts`); keep new context small.
 - **Recommendations** are stored in `ai_recommendations`, generated automatically from Home when missing or over a week old (`getRecommendationState`), and on demand via "New ideas" (1-hour cooldown).
+- **Wizard captions:** moving from Goal to Content shows template captions at once (`buildCaptions`), then — when a model is configured (`WizardBusiness.aiEnabled`) — asks the in-wizard copilot to write them (`writeCaptions` → `askWizardCopilot(…, "captions")`), applied with the usual AI banner and Undo.
+
+### Publishing
+
+- **Switch:** `isPublishingEnabled()` (`PUBLISHING_ENABLED`, default off) gates "Publish now" and both `/api/cron/*` routes; the wizard copy follows `WizardBusiness.publishingEnabled`.
+- **Statuses:** "Save draft" → `DRAFT`; "Schedule" → `SCHEDULED` at the chosen time; "Publish now" → `SCHEDULED` now, then (only when enabled) `publishDuePosts({ campaignId })` runs immediately. TikTok posts are `ACTION_REQUIRED`; the owner posts them and clicks "I posted it" (`markTikTokPosted`).
+- **The job:** pg_cron (migration 016) POSTs `/api/cron/publish` every 5 minutes and `/api/cron/metrics` hourly, with `Authorization: Bearer CRON_SECRET`. `publishDuePosts` claims due posts atomically (`claim_due_posts`, `FOR UPDATE SKIP LOCKED` → `PUBLISHING`), publishes through `getPublisher(platform)`, and records `PUBLISHED` + `external_post_id` or `FAILED` + `last_error` (owner-facing text, shown on Campaigns and Content). Posts stuck in `PUBLISHING` are failed, never retried, so nothing is posted twice.
+- **Adapters** (`lib/social/publishers.ts`) implement `SocialPublisher` over `lib/social/meta.ts`: Facebook posts a photo (`/{page}/photos`) or text (`/{page}/feed`); Instagram creates a media container, waits for `FINISHED`, then `media_publish` (needs a photo; Instagram only accepts JPG). Errors become plain-language `PublishResult.error`s; code 190 means "reconnect".
+- **Tokens** are AES-256-GCM encrypted with `SOCIAL_TOKEN_KEY` (`token-crypto.ts`) before they're stored, and only decrypted in `getPublishingAccount` (admin client). Owners with several Pages pick one on `/social-accounts/choose` (the user token waits in an encrypted 10-minute cookie).
+- Editing is blocked once any post is `PUBLISHING`/`PUBLISHED` (`isCampaignEditable`). Deleting a campaign removes it from Keh only, not from Facebook/Instagram.
 
 ### Rules
 
-- **Social platforms go through `SocialPublisher`** (`lib/social/publisher.interface.ts`, still a stub). Nothing publishes yet: "Schedule" and "Publish now" save posts as `SCHEDULED` (TikTok as `ACTION_REQUIRED`); "Save draft" saves `DRAFT`.
-- **Supabase clients:** `createBrowserClient()` in client code; `createServerClient()` in server code (RLS); `createAdminClient()` bypasses RLS — trusted server code only (token writes, quota release, recommendation writes, seed script).
+- **Social platforms go through `SocialPublisher`**; don't call the Graph API from pages or actions directly.
+- **Supabase clients:** `createBrowserClient()` in client code; `createServerClient()` in server code (RLS); `createAdminClient()` bypasses RLS — trusted server code only (tokens, the publish/metrics jobs, quota release, recommendation writes, account deletion, seed script).
 - **RLS ownership chain:** `auth.uid() → profiles.id → businesses.owner_id → <table>.business_id`, via `get_user_business_ids()`. Every new table needs RLS plus policies on this chain. Storage paths are `<business_id>/…` in the `product-images` bucket.
-- **Migrations:** numbered SQL files applied by hand in the Supabase SQL editor. Once applied, fix schema/RLS with a new migration, never by editing an old one. Newer ones to check are applied: 009 (AI rate limit), 010 (plan usage), 011 (realtime), 012 (recommendations), 013 (dismiss-only updates). Code degrades gracefully when 009/010/012 are missing, but limits then don't apply.
+- **Migrations:** numbered SQL files applied by hand in the Supabase SQL editor. Once applied, fix schema/RLS with a new migration, never by editing an old one. Newer ones to check are applied: 009 (AI rate limit), 010 (plan usage), 011 (realtime), 012 (recommendations), 013 (dismiss-only updates), 014 (scheduled-post quota for edits) and 015 (publishing: `last_error`, claim/metrics functions, delete-aware status trigger) are applied; **016 (pg_cron jobs) is intentionally not applied** — only run it after deploying and switching publishing on (README). Code degrades gracefully when 009/010/012/014 are missing, but limits then don't apply; publishing needs 015 + 016 + `PUBLISHING_ENABLED=true`.
+- **Deleting a user:** campaigns reference products `ON DELETE RESTRICT`, so delete the business's campaigns before the auth user (see `deleteAccount`), or the cascade fails.
 - **`social_accounts` token columns aren't selectable by users** (column grants, 007) — select explicit columns (`SAFE_COLUMNS`), not `*`; writes go through the admin client.
 
 ### Domain model
@@ -110,7 +131,7 @@ scripts/seed-demo-data.mjs             # demo history generator (secret key)
 `User → Business → { BrandProfile, Product[], SocialAccount[], Campaign[] → SocialPost[] → PostMetric[], AIRecommendation[], Subscription }`
 
 - Platforms: `FACEBOOK | INSTAGRAM | TIKTOK`.
-- Post status: `DRAFT | SCHEDULED | PUBLISHING | PUBLISHED | ACTION_REQUIRED | FAILED`. A campaign's status is derived from its posts by the `derive_campaign_status` trigger.
+- Post status: `DRAFT | SCHEDULED | PUBLISHING | PUBLISHED | ACTION_REQUIRED | FAILED`. A campaign's status is derived from its posts by the `derive_campaign_status` trigger (on insert, status update and — since 015 — delete).
 - A campaign has one product (`not null`, `on delete restrict`) and one post per platform. Only `ACTIVE` products can be used in a campaign (wizard + `saveCampaign`).
 - `handle_new_user()` (007) creates a profile, a business named from the sign-up form, a brand profile and a FREE subscription.
 - Enums are UPPER_SNAKE string unions.
@@ -125,24 +146,19 @@ scripts/seed-demo-data.mjs             # demo history generator (secret key)
 
 ## Known gaps
 
-**Major (need design or real work):**
+**Major:**
 
-1. **No publishing or scheduler.** Posts stay `SCHEDULED` forever; "Publish now" just saves with the current time. Needs `SocialPublisher` adapters (Facebook, Instagram) and a job runner (e.g. Supabase cron + an Edge Function or a protected Route Handler).
-2. **No metrics pipeline.** `post_metrics` is only filled by `seed:demo`, so real accounts have empty analytics, insights and no data-driven recommendations.
-3. **Wizard captions are templates by default.** `buildCaptions` in `CampaignContext.tsx` uses generic copy (e.g. "Treat yourself today!", which the AI prompt bans); AI captions only appear when the owner asks the copilot. Consider generating AI captions automatically on the Content step (one model call per campaign).
-4. **No campaign edit, delete or reschedule**, and no product delete (availability can be changed). Calendar and Content can't open a post.
-5. **No password reset, password/email change, or account deletion.**
-6. **Social tokens are stored in plain text** (hidden from users by column grants, but not encrypted — use Supabase Vault before real launch). Meta connect always picks the owner's *first* Page; no token revocation handling.
-7. **Data loading doesn't scale.** Most pages load every campaign, post and metric row for the business; `getPosts` uses `.in(ids)` lists that hit URL-length limits at a few hundred campaigns. Needs pagination / date-range queries or a database view.
-8. **No tests or CI.**
-9. **Onboarding, brand setup and billing** — planned as a guided onboarding after sign-up. Subscription "Upgrade" / "Manage" buttons do nothing yet. (Usage counters reset lazily in `consume_campaign_quota` once `usage_resets_at` passes, so the page can show last month's usage until the next campaign is saved.)
+1. **Deployment host not chosen** — see the README's "Deployment" section. Publishing (below) also waits on this.
+2. **Onboarding, brand setup and billing** — planned as a guided onboarding after sign-up. Subscription "Upgrade" / "Manage" do nothing yet. (Usage counters reset lazily in `consume_campaign_quota` once `usage_resets_at` passes, so the page can show last month's usage until the next campaign is saved.)
+3. **Publishing is switched off for the MVP and hasn't run against live Meta accounts.** The adapters are unit-tested with a mocked Graph API only. Before real owners can connect, the Meta app needs App Review for `pages_manage_posts`, `pages_read_engagement`, `read_insights`, `instagram_content_publish` and `instagram_manage_insights`; until then only app admins/testers can connect. Insight metric names change often — watch the `[cron] metrics` logs.
+4. **Instagram needs JPG photos.** Uploads may be PNG/WebP/GIF; those Instagram posts fail with a message asking for a JPG. Converting on upload (or warning in the wizard) would remove the surprise.
 
-**Minor / known:** campaign creation isn't a single transaction (the service deletes the campaign if its posts fail); `derive_campaign_status` ignores post deletes; AI model cooldowns are per server process; `database.types.ts` is hand-written; the RLS policies let an owner create extra businesses, which the app ignores (it always uses the first).
+**Minor / known:** pages still load a business's whole history (now in batches of 150 IDs, so no URL-length failures) — add pagination if accounts grow large; no end-to-end tests; campaign creation and edits aren't single transactions (edits update posts in place, so a failure never leaves a campaign empty); deleting a campaign doesn't remove published posts from the platforms or give back plan usage; AI model cooldowns are per server process; `database.types.ts` is hand-written; RLS lets an owner create extra businesses, which the app ignores (it always uses the first).
 
 ## Environment
 
-- **Env vars** (see `.env.example`, validated in `src/lib/env.ts`): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`; optional `GEMINI_API_KEY` / `OPENAI_API_KEY` (+ `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`, `GEMINI_THINKING_LEVEL`, `OPENAI_MODEL`) and `META_APP_ID` / `META_APP_SECRET`. `.env*` is gitignored except `.env.example`. **Never commit credentials.** Use the publishable/secret keys, not the legacy anon/service-role keys.
-- **Email confirmation:** if enabled, the link lands on `/auth/callback`, which must be in the project's allowed redirect URLs. For demos, turning off "Confirm email" is simplest.
+- **Env vars** (see `.env.example`, validated in `src/lib/env.ts`): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`; optional `GEMINI_API_KEY` / `OPENAI_API_KEY` (+ `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`, `GEMINI_THINKING_LEVEL`, `OPENAI_MODEL`) `META_APP_ID` / `META_APP_SECRET` + `SOCIAL_TOKEN_KEY` (connecting Facebook/Instagram), `PUBLISHING_ENABLED` (default off), and `CRON_SECRET` (only with publishing on; the same value goes in Vault as `keh_cron_secret`). `.env*` is gitignored except `.env.example`. **Never commit credentials.** Use the publishable/secret keys, not the legacy anon/service-role keys.
+- **Auth emails:** confirmation, password reset and email change all land on `/auth/callback` (with `?next=`), which must be in the project's allowed redirect URLs. The reset link only works in the browser that asked for it (PKCE). For demos, turning off "Confirm email" is simplest.
 - **Gemini free tier** has small daily quotas per model; when the main model is exhausted, requests fall back to the next model and then to guided mode. Watch the `[ai]` log lines.
 
 ## Agent skills

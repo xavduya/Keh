@@ -49,6 +49,18 @@ export function manilaWeekdayHour(value: string | Date): { weekday: string; hour
   };
 }
 
+const clockFormat = new Intl.DateTimeFormat("en-GB", {
+  timeZone: DEFAULT_TIMEZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+/** "18:00" — 24-hour clock time of a timestamp in Manila, as the wizard's time input expects. */
+export function manilaClock(value: string | Date): string {
+  return clockFormat.format(new Date(value));
+}
+
 /** Today's "YYYY-MM-DD" in Manila. */
 export function todayKey(): string {
   return manilaDateKey(new Date());

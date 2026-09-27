@@ -10,16 +10,21 @@ import { ReviewStep } from "./ReviewStep";
 import { PublishStep } from "./PublishStep";
 import { AiChangesBanner } from "./AiChangesBanner";
 import { WizardAiCopilot } from "./WizardAiCopilot";
-import type { CampaignGoal, Product } from "@/types";
+import type { CampaignDraft, CampaignGoal, Product } from "@/types";
 
 function WizardBody() {
-  const { step } = useCampaign();
+  const { step, draft } = useCampaign();
+  const editing = Boolean(draft.editId);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Create campaign"
-        subtitle="Tell us what you want to achieve. We'll handle the social media strategy."
+        title={editing ? "Edit campaign" : "Create campaign"}
+        subtitle={
+          editing
+            ? "Change anything, then save — including the date to reschedule it."
+            : "Tell us what you want to achieve. We'll handle the social media strategy."
+        }
       />
 
       {/* AI change audit notification banner */}
@@ -47,6 +52,7 @@ export function CampaignWizard(props: {
   initialProductId?: string;
   initialGoal?: CampaignGoal;
   initialPromotion?: string;
+  initialDraft?: CampaignDraft;
 }) {
   return (
     <CampaignProvider {...props}>

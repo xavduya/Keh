@@ -13,15 +13,8 @@ import {
   Wand2,
 } from "lucide-react";
 import { useCampaign } from "./CampaignContext";
-import { useMarketingAssistant } from "@/hooks/useMarketingAssistant";
+import { useMarketingAssistant, WIZARD_ASK_EVENT } from "@/hooks/useMarketingAssistant";
 import type { AssistantIntent, FieldChangeNotification, MarketingIdea } from "@/types";
-
-/** Fired on window to ask the in-wizard copilot something (detail: { prompt, intent }). */
-export const WIZARD_ASK_EVENT = "keh:wizard-ask";
-
-export function askWizardCopilot(prompt: string, intent: AssistantIntent = "chat") {
-  window.dispatchEvent(new CustomEvent(WIZARD_ASK_EVENT, { detail: { prompt, intent } }));
-}
 
 export function WizardAiCopilot() {
   const {

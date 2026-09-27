@@ -6,110 +6,34 @@
  * Meta redirects here after the user grants permissions. This handler:
  *   1. Verifies `state` against the nonce cookie set by the connect route
  *      (CSRF protection) and that the user is signed in.
- *   2. Exchanges the short-lived code for a long-lived user access token.
- *   3. For Facebook: fetches the user's Pages list and picks the first Page.
- *   4. For Instagram: fetches the Instagram Business Account linked to the Page.
- *   5. Writes (or updates) the social_accounts row via upsertSocialAccount.
- *   6. Redirects to /social-accounts on success, or back with an error param.
+ *   2. Exchanges the code for a long-lived user token.
+ *   3. Lists the user's Pages (with their linked Instagram accounts).
+ *   4. One eligible Page: saves it (encrypted Page token). Several: stores the
+ *      user token, encrypted, in a short-lived cookie and sends the owner to
+ *      /social-accounts/choose to pick one.
  *
- * Long-lived tokens last ~60 days. Token rotation is not yet implemented
- * (add a cron job that calls /oauth/access_token with grant_type=fb_exchange_token
- * before the token expires).
+ * Page tokens derived from a long-lived user token don't expire, so there's
+ * no refresh job; if the owner revokes access, publishing fails and they
+ * reconnect.
  */
 
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentContext } from "@/lib/auth/context";
 import { getMetaCredentials } from "@/lib/env";
-import { upsertSocialAccount } from "@/services/social-account.service";
-import { OAUTH_COOKIE, verifyOAuthState } from "@/lib/social/oauth-state";
 import type { ConnectErrorCode } from "@/lib/social/connect-errors";
+import { exchangeCodeForToken, exchangeForLongLivedToken, getPages } from "@/lib/social/meta";
+import {
+  OAUTH_COOKIE,
+  PAGE_PICK_COOKIE,
+  PAGE_PICK_COOKIE_PATH,
+  encodePagePick,
+  verifyOAuthState,
+} from "@/lib/social/oauth-state";
+import { isTokenEncryptionConfigured } from "@/lib/social/token-crypto";
+import { saveMetaPage } from "@/services/social-account.service";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Meta Graph API helpers
-// ─────────────────────────────────────────────────────────────────────────────
+const PAGE_PICK_MAX_AGE = 10 * 60; // seconds
 
-async function exchangeCodeForToken(
-  code: string,
-  redirectUri: string,
-  appId: string,
-  appSecret: string
-): Promise<{ access_token: string; expires_in?: number }> {
-  const url = new URL("https://graph.facebook.com/v22.0/oauth/access_token");
-  url.searchParams.set("client_id", appId);
-  url.searchParams.set("client_secret", appSecret);
-  url.searchParams.set("redirect_uri", redirectUri);
-  url.searchParams.set("code", code);
-
-  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Token exchange failed: ${body}`);
-  }
-  return res.json();
-}
-
-async function exchangeForLongLivedToken(
-  shortLived: string,
-  appId: string,
-  appSecret: string
-): Promise<{ access_token: string; expires_in: number }> {
-  const url = new URL("https://graph.facebook.com/v22.0/oauth/access_token");
-  url.searchParams.set("grant_type", "fb_exchange_token");
-  url.searchParams.set("client_id", appId);
-  url.searchParams.set("client_secret", appSecret);
-  url.searchParams.set("fb_exchange_token", shortLived);
-
-  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Long-lived token exchange failed: ${body}`);
-  }
-  return res.json();
-}
-
-interface PageResult {
-  id: string;
-  name: string;
-  access_token: string;
-}
-
-/** Returns the first Page the user manages. */
-async function getFirstPage(userToken: string): Promise<PageResult | null> {
-  const url = new URL("https://graph.facebook.com/v22.0/me/accounts");
-  url.searchParams.set("access_token", userToken);
-  url.searchParams.set("fields", "id,name,access_token");
-
-  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
-  if (!res.ok) return null;
-  const body: { data?: PageResult[] } = await res.json();
-  return body.data?.[0] ?? null;
-}
-
-interface IGAccountResult {
-  id: string;
-  username: string;
-}
-
-/** Returns the Instagram Business Account linked to a given Facebook Page. */
-async function getLinkedInstagramAccount(
-  pageId: string,
-  pageToken: string
-): Promise<IGAccountResult | null> {
-  const url = new URL(`https://graph.facebook.com/v22.0/${pageId}`);
-  url.searchParams.set("fields", "instagram_business_account{id,username}");
-  url.searchParams.set("access_token", pageToken);
-
-  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
-  if (!res.ok) return null;
-  const body: { instagram_business_account?: IGAccountResult } = await res.json();
-  return body.instagram_business_account ?? null;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Route handler
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Owner-facing messages live in CONNECT_ERRORS; Meta's raw error details only go to the server log.
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const redirectTo = (url: string) => {
@@ -118,6 +42,7 @@ export async function GET(request: NextRequest) {
     return response;
   };
   const success = () => redirectTo(`${origin}/social-accounts?connected=1`);
+  // Owner-facing messages live in CONNECT_ERRORS; Meta's raw details only go to the server log.
   const failure = (code: ConnectErrorCode) => redirectTo(`${origin}/social-accounts?error=${code}`);
 
   if (searchParams.get("error")) {
@@ -138,45 +63,34 @@ export async function GET(request: NextRequest) {
     return redirectTo(`${origin}/login`);
   }
 
+  if (!isTokenEncryptionConfigured()) return failure("not_configured");
   const { appId, appSecret } = getMetaCredentials();
-  const redirectUri = `${origin}/auth/social/callback`;
 
   try {
-    // 1. Exchange code for short-lived token
-    const { access_token: shortLived } = await exchangeCodeForToken(code, redirectUri, appId, appSecret);
+    const shortLived = await exchangeCodeForToken(code, `${origin}/auth/social/callback`, appId, appSecret);
+    const userToken = await exchangeForLongLivedToken(shortLived, appId, appSecret);
 
-    // 2. Upgrade to long-lived token (~60 days)
-    // Only used to fetch the Page; the Page token saved below doesn't expire.
-    const { access_token: longLived } = await exchangeForLongLivedToken(shortLived, appId, appSecret);
-
-    // 3. The managed Page (Instagram Business accounts hang off a Page too)
-    const page = await getFirstPage(longLived);
-    if (!page) {
+    const pages = await getPages(userToken);
+    if (pages.length === 0) {
       return failure(state.platform === "FACEBOOK" ? "no_page_facebook" : "no_page_instagram");
     }
+    const eligible = state.platform === "FACEBOOK" ? pages : pages.filter((p) => p.instagram_business_account);
+    if (eligible.length === 0) return failure("no_instagram");
 
-    if (state.platform === "FACEBOOK") {
-      await upsertSocialAccount(businessId, {
-        platform: "FACEBOOK",
-        accountId: page.id,
-        accountName: page.name,
-        // A Page token derived from a long-lived user token doesn't expire.
-        accessToken: page.access_token,
-      });
-    } else {
-      const igAccount = await getLinkedInstagramAccount(page.id, page.access_token);
-      if (!igAccount) {
-        return failure("no_instagram");
-      }
-      await upsertSocialAccount(businessId, {
-        platform: "INSTAGRAM",
-        accountId: igAccount.id,
-        accountName: `@${igAccount.username}`,
-        accessToken: page.access_token, // page token is used for IG Content Publishing API
-      });
+    if (eligible.length === 1) {
+      await saveMetaPage(businessId, state.platform, eligible[0]);
+      return success();
     }
 
-    return success();
+    const response = redirectTo(`${origin}/social-accounts/choose`);
+    response.cookies.set(PAGE_PICK_COOKIE, encodePagePick({ platform: state.platform, userToken }), {
+      httpOnly: true,
+      secure: origin.startsWith("https://"),
+      sameSite: "lax",
+      path: PAGE_PICK_COOKIE_PATH,
+      maxAge: PAGE_PICK_MAX_AGE,
+    });
+    return response;
   } catch (err) {
     console.error("Meta OAuth callback failed", err);
     return failure("failed");

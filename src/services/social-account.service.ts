@@ -7,11 +7,14 @@
  * Migration 007 hides the OAuth token columns from signed-in users (column
  * grants), so reads select an explicit list of safe columns — `select("*")`
  * fails with 42501 — and anything that writes or clears tokens runs
- * server-side with the secret key.
+ * server-side with the secret key. Tokens are stored encrypted
+ * (lib/social/token-crypto.ts).
  */
 
 import type { Platform, SocialAccount } from "@/types";
 import { createAdminClient, createServerClient } from "@/lib/supabase/server";
+import type { MetaPage } from "@/lib/social/meta";
+import { decryptToken, encryptToken } from "@/lib/social/token-crypto";
 
 /** Columns owners are allowed to read (no tokens). */
 const SAFE_COLUMNS =
@@ -109,7 +112,7 @@ export async function upsertSocialAccount(
         account_id: connection.accountId ?? null,
         connected: true,
         requires_manual_publish: MANUAL_PUBLISH[connection.platform],
-        access_token: connection.accessToken ?? null,
+        access_token: connection.accessToken ? encryptToken(connection.accessToken) : null,
         refresh_token: null,
         token_expires_at: connection.tokenExpiresAt ?? null,
         last_synced_at: new Date().toISOString(),
@@ -135,4 +138,42 @@ export async function disconnectSocialAccount(businessId: string, platform: Plat
     .eq("business_id", businessId)
     .eq("platform", platform);
   if (error) throw error;
+}
+
+/** Saves the Facebook Page, or the Instagram account linked to it, the owner chose. */
+export async function saveMetaPage(
+  businessId: string,
+  platform: "FACEBOOK" | "INSTAGRAM",
+  page: MetaPage
+): Promise<void> {
+  const instagram = page.instagram_business_account;
+  if (platform === "INSTAGRAM" && !instagram) throw new Error("This Page has no linked Instagram account.");
+  await upsertSocialAccount(businessId, {
+    platform,
+    accountId: platform === "FACEBOOK" ? page.id : instagram!.id,
+    accountName: platform === "FACEBOOK" ? page.name : `@${instagram!.username}`,
+    // Page tokens derived from a long-lived user token don't expire; the
+    // Instagram publishing API uses the Page token too.
+    accessToken: page.access_token,
+  });
+}
+
+/**
+ * The account ID and decrypted token Keh publishes with, for the publish and
+ * metrics jobs. Server-only (secret key). Null when the platform isn't
+ * connected or has no token (TikTok).
+ */
+export async function getPublishingAccount(
+  businessId: string,
+  platform: Platform
+): Promise<{ accountId: string; accessToken: string } | null> {
+  const { data, error } = await createAdminClient()
+    .from("social_accounts")
+    .select("account_id, access_token, connected")
+    .eq("business_id", businessId)
+    .eq("platform", platform)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.connected || !data.access_token || !data.account_id) return null;
+  return { accountId: data.account_id, accessToken: decryptToken(data.access_token) };
 }

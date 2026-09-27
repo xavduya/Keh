@@ -154,6 +154,14 @@ export function dispatchAiCampaign(action: MarketingCampaignAction) {
   window.dispatchEvent(new CustomEvent(APPLY_AI_CAMPAIGN_EVENT, { detail: toPending(action) }));
 }
 
+/** Fired on window to ask the in-wizard copilot something (detail: { prompt, intent }). */
+export const WIZARD_ASK_EVENT = "keh:wizard-ask";
+
+/** Asks the in-wizard copilot, which sends the current draft along. */
+export function askWizardCopilot(prompt: string, intent: AssistantIntent = "chat") {
+  window.dispatchEvent(new CustomEvent(WIZARD_ASK_EVENT, { detail: { prompt, intent } }));
+}
+
 /** Opens the floating copilot, optionally pre-filling its input. */
 export function openAiCopilot(prompt?: string) {
   window.dispatchEvent(new CustomEvent(OPEN_AI_COPILOT_EVENT, { detail: { prompt } }));

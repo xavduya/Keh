@@ -5,7 +5,8 @@
  */
 
 export const CONNECT_ERRORS = {
-  not_configured: "Facebook and Instagram connections aren't set up yet (missing Meta app credentials).",
+  not_configured:
+    "Facebook and Instagram connections aren't set up yet (missing Meta app credentials or SOCIAL_TOKEN_KEY).",
   cancelled: "The connection was cancelled on Facebook.",
   expired: "That connection link expired or didn't come from this browser. Please try connecting again.",
   failed: "We couldn't finish connecting. Please try again.",

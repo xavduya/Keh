@@ -3,6 +3,7 @@ import { SocialAccountsManager } from "@/components/social-accounts/SocialAccoun
 import { getCurrentContext } from "@/lib/auth/context";
 import { isMetaConfigured } from "@/lib/env";
 import { connectErrorMessage } from "@/lib/social/connect-errors";
+import { isTokenEncryptionConfigured } from "@/lib/social/token-crypto";
 
 export default async function SocialAccountsPage({
   searchParams,
@@ -18,7 +19,7 @@ export default async function SocialAccountsPage({
   return (
     <SocialAccountsManager
       accounts={accounts}
-      metaConfigured={isMetaConfigured()}
+      metaConfigured={isMetaConfigured() && isTokenEncryptionConfigured()}
       error={connectErrorMessage(error)}
       justConnected={connected === "1"}
     />

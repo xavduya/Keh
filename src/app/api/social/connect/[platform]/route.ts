@@ -17,13 +17,16 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentContext } from "@/lib/auth/context";
 import { getMetaCredentials, isMetaConfigured } from "@/lib/env";
 import { OAUTH_COOKIE, OAUTH_COOKIE_MAX_AGE, createOAuthState } from "@/lib/social/oauth-state";
+import { isTokenEncryptionConfigured } from "@/lib/social/token-crypto";
 
 const META_SCOPES = [
   "pages_show_list",
   "pages_manage_posts",
   "pages_read_engagement",
+  "read_insights",
   "instagram_basic",
   "instagram_content_publish",
+  "instagram_manage_insights",
 ].join(",");
 
 export async function GET(
@@ -40,7 +43,7 @@ export async function GET(
   // Must be signed in (redirects to /login otherwise).
   await getCurrentContext();
 
-  if (!isMetaConfigured()) {
+  if (!isMetaConfigured() || !isTokenEncryptionConfigured()) {
     return NextResponse.redirect(`${origin}/social-accounts?error=not_configured`);
   }
   const { appId } = getMetaCredentials();

@@ -116,3 +116,10 @@ export async function updateProduct(
   if (error) throw error;
   return toProduct(data);
 }
+
+/** Deletes a product. Fails (FK restrict) if a campaign still uses it — check first. */
+export async function deleteProduct(businessId: string, id: string): Promise<void> {
+  const supabase = await createServerClient();
+  const { error } = await supabase.from("products").delete().eq("id", id).eq("business_id", businessId);
+  if (error) throw error;
+}

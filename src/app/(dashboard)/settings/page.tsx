@@ -2,6 +2,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { getCurrentContext } from "@/lib/auth/context";
 import { signOut } from "@/app/(auth)/actions";
+import { AccountForms } from "./AccountForms";
 
 function SettingsRow({
   label,
@@ -60,6 +61,8 @@ export default async function SettingsPage() {
           <span className={chip}>Asia/Manila · UTC+8</span>
         </SettingsRow>
       </section>
+
+      <AccountForms />
     </div>
   );
 }

@@ -191,6 +191,8 @@ export type SocialPostRow = {
   published_at: string | null;
   status: DbPostStatus;
   external_post_id: string | null;
+  /** Why publishing failed (migration 015). */
+  last_error: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -246,7 +248,9 @@ export type InsertBrandProfile = Omit<BrandProfileRow, "id" | "created_at" | "up
 export type InsertProduct = Omit<ProductRow, "id" | "campaign_count" | "created_at" | "updated_at">;
 export type InsertSocialAccount = Omit<SocialAccountRow, "id" | "created_at" | "updated_at">;
 export type InsertCampaign = Omit<CampaignRow, "id" | "status" | "created_at" | "updated_at">;
-export type InsertSocialPost = Omit<SocialPostRow, "id" | "created_at" | "updated_at">;
+export type InsertSocialPost = Omit<SocialPostRow, "id" | "created_at" | "updated_at" | "last_error"> & {
+  last_error?: string | null;
+};
 export type InsertPostMetric = Omit<PostMetricRow, "id" | "collected_at">;
 export type InsertAiRecommendation = Omit<AiRecommendationRow, "id" | "dismissed_at" | "created_at">;
 
@@ -358,6 +362,29 @@ export type Database = {
       release_campaign_quota: {
         Args: { p_business_id: string; p_scheduled_posts: number };
         Returns: undefined;
+      };
+      claim_due_posts: {
+        Args: { p_limit?: number; p_campaign_id?: string | null };
+        Returns: {
+          id: string;
+          campaign_id: string;
+          business_id: string;
+          platform: DbPlatform;
+          caption: string;
+          media_url: string | null;
+        }[];
+      };
+      fail_stuck_posts: {
+        Args: { p_minutes?: number };
+        Returns: number;
+      };
+      posts_for_metrics: {
+        Args: { p_days?: number; p_limit?: number };
+        Returns: { id: string; business_id: string; platform: DbPlatform; external_post_id: string }[];
+      };
+      consume_scheduled_posts: {
+        Args: { p_business_id: string; p_count: number };
+        Returns: { allowed: boolean; reason: string }[];
       };
     };
     CompositeTypes: Record<never, never>;

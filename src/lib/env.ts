@@ -49,3 +49,12 @@ export function getMetaCredentials(): { appId: string; appSecret: string } {
     appSecret: required("META_APP_SECRET", process.env.META_APP_SECRET),
   };
 }
+
+/**
+ * Posting to Facebook / Instagram and collecting their metrics. Off unless
+ * PUBLISHING_ENABLED=true: for the MVP, "Schedule" and "Publish now" only
+ * save posts to the calendar, and /api/cron/* do nothing.
+ */
+export function isPublishingEnabled(): boolean {
+  return process.env.PUBLISHING_ENABLED === "true";
+}
