@@ -12,6 +12,8 @@ import { formatPrice } from "@/utils";
 import type { PostingSlot } from "@/lib/analytics";
 import {
   APPLY_AI_CAMPAIGN_EVENT,
+  READ_CAMPAIGN_CONTEXT_EVENT,
+  type CampaignContextRequest,
   askWizardCopilot,
   takePendingAiCampaign,
   type PendingAiCampaign,
@@ -156,6 +158,12 @@ export function CampaignProvider({
     draftRef.current = draft;
   }, [draft]);
 
+  useEffect(() => {
+    const respond = (event: Event) => (event as CustomEvent<CampaignContextRequest>).detail.receive({ currentDraft: draftRef.current, currentStep: step });
+    window.addEventListener(READ_CAMPAIGN_CONTEXT_EVENT, respond);
+    return () => window.removeEventListener(READ_CAMPAIGN_CONTEXT_EVENT, respond);
+  }, [step]);
+
   const product = products.find((p) => p.id === draft.productId) ?? null;
 
   function setDraft(updates: Partial<CampaignDraft>) {
@@ -185,7 +193,7 @@ export function CampaignProvider({
         : changes.filter((c) => c.field !== "productId");
 
       const previousDraft = draftRef.current;
-      const nextDraft = { ...previousDraft, ...safeUpdates };
+      const nextDraft = { ...previousDraft, ...safeUpdates, captions: { ...previousDraft.captions, ...safeUpdates.captions } };
       setDraftState(nextDraft);
       setAiChanges({ timestamp: Date.now(), summary, changes: safeChanges, previousDraft });
       setAiUpdatedFields((prev) => Array.from(new Set([...prev, ...safeChanges.map((c) => c.field)])));

@@ -13,9 +13,9 @@ import type {
   AssistantIntent,
   AssistantMessage,
   CampaignDraft,
-  MarketingAssistantResponse,
   MarketingCampaignAction,
 } from "@/types";
+import { MarketingAssistantResponseSchema } from "@/lib/validation/schemas";
 
 /** Messages sent back as conversation history (the API accepts up to 8; the model sees 4). */
 const HISTORY_LENGTH = 4;
@@ -27,6 +27,14 @@ export interface AskOptions {
   currentStep?: number;
 }
 
+export const READ_CAMPAIGN_CONTEXT_EVENT = "keh:read-campaign-context";
+export type CampaignContextRequest = { receive: (snapshot: { currentDraft: CampaignDraft; currentStep: number }) => void };
+function currentWizardContext(): Pick<AskOptions, "currentDraft" | "currentStep"> {
+  let snapshot: Pick<AskOptions, "currentDraft" | "currentStep"> = {};
+  window.dispatchEvent(new CustomEvent<CampaignContextRequest>(READ_CAMPAIGN_CONTEXT_EVENT, { detail: { receive: (value) => { snapshot = value; } } }));
+  return snapshot;
+}
+
 export function useMarketingAssistant({
   onAction,
 }: {
@@ -35,7 +43,10 @@ export function useMarketingAssistant({
 } = {}) {
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [activeIntent, setActiveIntent] = useState<AssistantIntent>("chat");
   const [error, setError] = useState("");
+  const pending = useRef<AbortController | null>(null);
+  useEffect(() => () => { pending.current?.abort(); pending.current = null; }, []);
   // Latest messages for building history without re-creating `ask`.
   const messagesRef = useRef<AssistantMessage[]>([]);
   useEffect(() => {
@@ -45,10 +56,15 @@ export function useMarketingAssistant({
   const ask = useCallback(
     async (question: string, options: AskOptions = {}) => {
       const text = question.trim();
-      if (!text || loading) return null;
+      if (!text || pending.current) return null;
+      const wizard = options.currentDraft ? options : { ...currentWizardContext(), ...options };
+      const controller = new AbortController();
+      pending.current = controller;
+      const timeout = setTimeout(() => controller.abort(), 55_000);
 
       setError("");
       setLoading(true);
+      setActiveIntent(options.intent ?? "chat");
       const history = messagesRef.current
         .slice(-HISTORY_LENGTH)
         .map(({ role, content }) => ({ role, content: content.slice(0, 800) }));
@@ -57,27 +73,33 @@ export function useMarketingAssistant({
       try {
         const response = await fetch("/api/assistant", {
           method: "POST",
+          signal: controller.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             question: text,
             history,
             actionIntent: options.intent ?? "chat",
-            currentDraft: options.currentDraft,
-            currentStep: options.currentStep,
+            currentDraft: wizard.currentDraft,
+            currentStep: wizard.currentStep,
           }),
         });
-        const data = (await response.json().catch(() => ({}))) as Partial<MarketingAssistantResponse> & {
-          error?: string;
-        };
-        if (!response.ok || !data.answer) {
-          throw new Error(data.error || "Keh couldn't answer right now. Please try again.");
+        const raw: unknown = await response.json().catch(() => null);
+        if (pending.current !== controller) return null;
+        if (!response.ok) {
+          const message = raw && typeof raw === "object" && "error" in raw && typeof raw.error === "string"
+            ? raw.error : "Keh couldn't answer right now. Please try again.";
+          throw new Error(message);
         }
+        const parsed = MarketingAssistantResponseSchema.safeParse(raw);
+        if (!parsed.success || !parsed.data.answer.trim()) throw new Error("Keh returned an incomplete response. Please try again.");
+        const data = parsed.data;
 
         const reply: AssistantMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
           content: data.answer,
           mode: data.mode,
+          control: data.control,
           action: data.action,
           ideas: data.ideas,
         };
@@ -87,21 +109,37 @@ export function useMarketingAssistant({
         }
         return reply;
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Keh couldn't answer right now. Please try again.");
+        if (pending.current !== controller) return null;
+        setError(controller.signal.aborted ? "Keh took too long to answer. Please try again." : err instanceof Error ? err.message : "Keh couldn't answer right now. Please try again.");
         return null;
       } finally {
-        setLoading(false);
+        clearTimeout(timeout);
+        if (pending.current === controller) {
+          pending.current = null;
+          setLoading(false);
+        }
       }
     },
-    [loading, onAction]
+    [onAction]
   );
 
   const reset = useCallback(() => {
+    pending.current?.abort();
+    pending.current = null;
+    messagesRef.current = [];
+    setLoading(false);
     setMessages([]);
     setError("");
   }, []);
 
-  return { messages, ask, loading, error, reset };
+  const cancel = useCallback(() => {
+    pending.current?.abort();
+    pending.current = null;
+    setLoading(false);
+    setError("Generation stopped. You can send another request.");
+  }, []);
+
+  return { messages, ask, loading, activeIntent, cancel, error, reset };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

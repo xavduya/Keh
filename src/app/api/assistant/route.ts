@@ -1,3 +1,5 @@
+import { isAiEnabled } from "@/lib/ai/enabled";
+import { AiGenerationError } from "@/lib/ai/errors";
 import { NextResponse } from "next/server";
 import { generateMarketingAdvice, usesModel } from "@/lib/ai/ai.service";
 import { createServerClient } from "@/lib/supabase/server";
@@ -5,10 +7,14 @@ import { MarketingAssistantRequestSchema } from "@/lib/validation/schemas";
 import { getBusinessByOwnerId, getSubscription } from "@/services/business.service";
 import { buildMarketingContext } from "@/lib/ai/context";
 import { consumeAiRequest } from "@/lib/ai/rate-limit";
+import { activeProvider } from "@/lib/ai/providers";
+
+export const maxDuration = 60;
 
 const MAX_BODY_BYTES = 24_000;
 
 export async function POST(request: Request) {
+  if (!isAiEnabled()) return NextResponse.json({ error: "AI responses are temporarily paused." }, { status: 503 });
   // Measure the body itself — a Content-Length header can be omitted.
   const raw = await request.text();
   if (raw.length > MAX_BODY_BYTES) {
@@ -78,8 +84,12 @@ export async function POST(request: Request) {
     // Only model calls count against the plan's limit; guided answers are free.
     let allowModel = usesModel(parsedRequest.data);
     if (allowModel) {
+      if (!activeProvider()) throw new AiGenerationError("Gemini isn't configured. Add GEMINI_API_KEY on the server.");
       const subscription = await getSubscription(business.id).catch(() => null);
       const limit = await consumeAiRequest(subscription?.plan);
+      if (!limit.allowed && limit.unavailable) {
+        throw new AiGenerationError("Keh couldn't check your AI allowance. Please try again shortly.");
+      }
       if (!limit.allowed && !limit.unavailable) {
         return NextResponse.json(
           { error: limit.message },
@@ -94,6 +104,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json(advice);
   } catch (error) {
+    if (error instanceof AiGenerationError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error("Marketing assistant request failed", error);
     return NextResponse.json(
       { error: "Keh couldn't prepare advice right now. Please try again." },

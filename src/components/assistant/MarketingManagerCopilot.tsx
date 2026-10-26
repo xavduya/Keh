@@ -1,5 +1,9 @@
 "use client";
 
+import { AiLoading } from "@/components/assistant/AiLoading";
+
+import { DashboardControlCard } from "@/components/assistant/DashboardControlCard";
+
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -33,9 +37,9 @@ export function MarketingManagerCopilot({
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
 
-  const isAlreadyInWizard = pathname === "/campaigns/new";
+  const isAlreadyInWizard = pathname === "/campaigns/new" || /^\/campaigns\/[^/]+\/edit$/.test(pathname);
 
-  const { messages, ask, loading, error } = useMarketingAssistant({
+  const { messages, ask, loading, activeIntent, cancel, error } = useMarketingAssistant({
     // Filled fields go straight into the open wizard, or wait for the next one.
     onAction: (action) =>
       isAlreadyInWizard ? dispatchAiCampaign(action) : stashPendingAiCampaign(action),
@@ -78,6 +82,8 @@ export function MarketingManagerCopilot({
   }
 
   const starterSuggestions: { title: string; query: string; intent: AssistantIntent }[] = [
+    { title: "Manage products", query: "Help me update a product. Ask which one and what changes I want.", intent: "chat" },
+    { title: "Update business or brand", query: "Help me update my business or brand profile. Ask what I want to change.", intent: "chat" },
     {
       title: "💡 Brainstorm 3 Campaign Ideas",
       query: "Give me 3 high-converting marketing campaign ideas for our business.",
@@ -217,6 +223,7 @@ export function MarketingManagerCopilot({
                     </div>
                     <div className="whitespace-pre-wrap">{m.content}</div>
 
+                    {m.control && <DashboardControlCard control={m.control} />}
                     {/* Action change summary pill if AI modified fields */}
                     {m.action && (
                       <div className="mt-3 rounded-[8px] border border-[#d8d2fb] bg-white p-3 text-[#262535]">
@@ -285,12 +292,7 @@ export function MarketingManagerCopilot({
               ))
             )}
 
-            {loading && (
-              <div className="flex items-center gap-2 text-[12px] text-[#7b7b8b]">
-                <LoaderCircle size={15} className="animate-spin text-[#5849da]" />
-                Keh is thinking and preparing your content…
-              </div>
-            )}
+            {loading && <AiLoading intent={activeIntent} onCancel={cancel} reveal />}
 
             {error && (
               <div className="rounded-[8px] bg-[#fff0f0] p-2.5 text-[12px] text-[#b9382a]">
@@ -305,7 +307,6 @@ export function MarketingManagerCopilot({
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                disabled={loading}
                 placeholder="Ask for ideas or ask to fill campaign fields…"
                 className="flex-1 rounded-[8px] border border-[#e9e9ef] bg-white px-3.5 py-2 text-[13px] text-[#262535] placeholder:text-[#a0a0ad] focus:border-[#5849da] focus:outline-none"
               />

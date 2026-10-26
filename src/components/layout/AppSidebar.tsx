@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import { NavigationLink } from "./NavigationLink";
 import { usePathname } from "next/navigation";
 import {
   Home, Sparkles, Plus, Calendar, FileText, Package,
@@ -54,10 +55,10 @@ export function AppSidebar({
 
       <aside
         className={[
-          "fixed top-0 left-0 h-full w-[240px] bg-white border-r border-[#e9e9ef] z-40",
+          "fixed top-0 left-0 h-dvh w-[240px] shrink-0 bg-white border-r border-[#e9e9ef] z-40",
           "flex flex-col overflow-y-auto",
           "transition-transform duration-200 ease-in-out",
-          "lg:translate-x-0 lg:static lg:z-auto",
+          "lg:translate-x-0 lg:sticky lg:z-auto",
           isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         ].join(" ")}
       >
@@ -101,14 +102,14 @@ export function AppSidebar({
 
         {/* Create campaign button */}
         <div className="px-3 mb-4">
-          <Link
+          <NavigationLink
             href="/campaigns/new"
             onClick={onClose}
             className="flex items-center justify-center gap-2 w-full py-[10px] px-4 rounded-[8px] bg-[#5849da] text-white text-[14px] font-[600] hover:bg-[#4a3cc7] transition-colors"
           >
             <Plus size={16} />
             Create Campaign
-          </Link>
+          </NavigationLink>
         </div>
 
         {/* Main nav */}
@@ -124,7 +125,7 @@ export function AppSidebar({
                 : pathname.startsWith(item.href);
 
             return (
-              <Link
+              <NavigationLink
                 key={item.id}
                 href={item.href}
                 onClick={onClose}
@@ -147,7 +148,7 @@ export function AppSidebar({
                     AI
                   </span>
                 )}
-              </Link>
+              </NavigationLink>
             );
           })}
         </nav>
@@ -158,7 +159,7 @@ export function AppSidebar({
             const Icon = ICON_MAP[item.icon];
             const isActive = pathname.startsWith(item.href);
             return (
-              <Link
+              <NavigationLink
                 key={item.id}
                 href={item.href}
                 onClick={onClose}
@@ -176,7 +177,7 @@ export function AppSidebar({
                   />
                 )}
                 {item.label}
-              </Link>
+              </NavigationLink>
             );
           })}
         </div>

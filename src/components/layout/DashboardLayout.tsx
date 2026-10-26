@@ -1,13 +1,15 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useState } from "react";
 import { AppSidebar } from "./AppSidebar";
 import { TopBar } from "./TopBar";
 import { initials } from "@/utils";
-import { MarketingManagerCopilot } from "@/components/assistant/MarketingManagerCopilot";
+const MarketingManagerCopilot = dynamic(() => import("@/components/assistant/MarketingManagerCopilot").then((m) => m.MarketingManagerCopilot));
 import { LiveRefresh } from "./LiveRefresh";
 
 interface DashboardLayoutProps {
+  aiEnabled: boolean;
   children: React.ReactNode;
   businessId: string;
   businessName: string;
@@ -17,6 +19,7 @@ interface DashboardLayoutProps {
 }
 
 export function DashboardLayout({
+  aiEnabled,
   children,
   businessId,
   businessName,
@@ -28,7 +31,7 @@ export function DashboardLayout({
   const userInitials = initials(userName);
 
   return (
-    <div className="flex h-full min-h-screen bg-[#f7f8fb]">
+    <div className="flex min-h-dvh bg-[#f7f8fb]">
       <LiveRefresh businessId={businessId} />
       <AppSidebar
         isOpen={sidebarOpen}
@@ -42,10 +45,10 @@ export function DashboardLayout({
 
       {/* Main content area */}
       <div className="flex flex-col flex-1 min-w-0 lg:ml-0">
-        <TopBar onMenuClick={() => setSidebarOpen(true)} userInitials={userInitials} />
+        <TopBar aiEnabled={aiEnabled} onMenuClick={() => setSidebarOpen(true)} userInitials={userInitials} />
 
-        <main className="flex-1 overflow-y-auto">
-          <div className="max-w-[1200px] mx-auto px-6 py-6">
+        <main className="min-w-0 flex-1">
+          <div className="max-w-[1200px] mx-auto px-4 py-5 sm:px-6 sm:py-6">
             {children}
           </div>
         </main>
@@ -58,10 +61,10 @@ export function DashboardLayout({
         </footer>
       </div>
 
-      <MarketingManagerCopilot
+      {aiEnabled && <MarketingManagerCopilot
         businessName={businessName}
         businessLocation={businessLocation}
-      />
+      />}
     </div>
   );
 }

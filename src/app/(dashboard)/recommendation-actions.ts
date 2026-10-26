@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentContext } from "@/lib/auth/context";
 import { buildMarketingContext } from "@/lib/ai/context";
+import { isAiEnabled } from "@/lib/ai/enabled";
 import { activeProvider } from "@/lib/ai/providers";
 import { consumeAiRequest } from "@/lib/ai/rate-limit";
 import { generateRecommendations } from "@/lib/ai/recommendations";
@@ -27,6 +28,7 @@ function revalidate() {
  * most once per RECOMMENDATION_REFRESH_COOLDOWN_MINUTES.
  */
 export async function refreshRecommendations({ force = false } = {}): Promise<RefreshResult> {
+  if (!isAiEnabled()) return { updated: false, error: force ? "AI responses are temporarily paused." : undefined };
   const { business } = await getCurrentContext();
 
   const state = await getRecommendationState(business.id);
