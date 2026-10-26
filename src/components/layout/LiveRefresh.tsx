@@ -41,14 +41,21 @@ export function LiveRefresh({ businessId }: { businessId: string }) {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let lastRefresh = Date.now();
+    let dirty = false;
 
     function refresh() {
+      timer = undefined;
+      if (document.visibilityState !== "visible") { dirty = true; return; }
+      dirty = false;
       lastRefresh = Date.now();
       router.refresh();
     }
     function scheduleRefresh() {
-      clearTimeout(timer);
-      timer = setTimeout(refresh, REFRESH_DEBOUNCE_MS);
+      dirty = true;
+      if (document.visibilityState !== "visible") return;
+      // A continuous event stream must not keep postponing the same refresh.
+      if (timer !== undefined) return;
+      timer = setTimeout(refresh, Math.max(REFRESH_DEBOUNCE_MS, FOCUS_REFRESH_MIN_GAP_MS - (Date.now() - lastRefresh)));
     }
 
     // 1. Realtime
@@ -68,7 +75,9 @@ export function LiveRefresh({ businessId }: { businessId: string }) {
 
     // 2. Coming back to the tab
     function onVisible() {
-      if (document.visibilityState === "visible" && Date.now() - lastRefresh > FOCUS_REFRESH_MIN_GAP_MS) {
+      if (document.visibilityState === "visible" && (dirty || Date.now() - lastRefresh > FOCUS_REFRESH_MIN_GAP_MS)) {
+        clearTimeout(timer);
+        timer = undefined;
         refresh();
       }
     }

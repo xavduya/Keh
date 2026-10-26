@@ -1,5 +1,7 @@
 "use client";
 
+import { AiLoading } from "@/components/assistant/AiLoading";
+
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -31,19 +33,21 @@ export function RecommendationList({
     setError(null);
     setBusyId("refresh");
     startTransition(async () => {
-      const result = await refreshRecommendations({ force: true });
-      if (result.error) setError(result.error);
-      if (result.updated) router.refresh();
-      setBusyId(null);
+      try {
+        const result = await refreshRecommendations({ force: true });
+        if (result.error) setError(result.error);
+        if (result.updated) router.refresh();
+      } catch { setError("Could not refresh ideas. Please try again."); }
+      finally { setBusyId(null); }
     });
   }
 
   function notNow(id: string) {
     setBusyId(id);
     startTransition(async () => {
-      await dismissRecommendation(id);
-      router.refresh();
-      setBusyId(null);
+      try { await dismissRecommendation(id); router.refresh(); }
+      catch { setError("Could not dismiss this idea. Please try again."); }
+      finally { setBusyId(null); }
     });
   }
 
@@ -61,6 +65,8 @@ export function RecommendationList({
           {busyId === "refresh" ? "Thinking…" : "New ideas"}
         </button>
       </div>
+
+      {pending && busyId === "refresh" && <AiLoading intent="ideas" />}
 
       {error && (
         <p role="alert" className="mt-2 text-[12px] text-destructive">

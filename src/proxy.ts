@@ -49,19 +49,20 @@ export async function proxy(request: NextRequest) {
 
   // Refresh the session — do NOT remove this call.
   // It must come before any auth checks so the session is up to date.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Signature-verified claims can use cached public keys, avoiding a second
+  // user-endpoint round trip. Pages/actions still validate with getUser().
+  const { data, error } = await supabase.auth.getClaims();
+  const signedIn = !error && Boolean(data?.claims?.sub);
 
   const { pathname } = request.nextUrl;
   const isAuthPage = AUTH_PAGES.includes(pathname);
   const isPublic = PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
   const handlesApiAuth = API_ROUTES_WITH_OWN_AUTH.includes(pathname);
 
-  if (!user && !isAuthPage && !isPublic && !handlesApiAuth) {
+  if (!signedIn && !isAuthPage && !isPublic && !handlesApiAuth) {
     return redirectWithCookies(request, "/login", supabaseResponse);
   }
-  if (user && isAuthPage) {
+  if (signedIn && isAuthPage) {
     return redirectWithCookies(request, "/dashboard", supabaseResponse);
   }
 

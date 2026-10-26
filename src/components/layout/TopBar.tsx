@@ -23,11 +23,12 @@ function getPageTitle(pathname: string): string {
 }
 
 interface TopBarProps {
+  aiEnabled: boolean;
   onMenuClick: () => void;
   userInitials: string;
 }
 
-export function TopBar({ onMenuClick, userInitials }: TopBarProps) {
+export function TopBar({ aiEnabled, onMenuClick, userInitials }: TopBarProps) {
   const pathname = usePathname();
   const pageTitle = getPageTitle(pathname);
 
@@ -49,14 +50,14 @@ export function TopBar({ onMenuClick, userInitials }: TopBarProps) {
 
       {/* Right: Ask AI button + avatar */}
       <div className="flex items-center gap-3">
-        <button
+        {aiEnabled && <button
           type="button"
           onClick={() => openAiCopilot()}
           className="group inline-flex items-center gap-1.5 rounded-full border border-[#d8d2fb] bg-[#f0edff]/70 px-3 py-1.5 text-[12px] font-[600] text-[#5849da] transition-all hover:bg-[#5849da] hover:text-white"
         >
           <Sparkles size={13} className="text-[#5849da] group-hover:text-white" />
           <span>Ask Keh AI</span>
-        </button>
+        </button>}
 
         <span className="w-[30px] h-[30px] rounded-full bg-[#f0edff] text-[#5849da] text-[11px] font-[700] flex items-center justify-center">
           {userInitials}

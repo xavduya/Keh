@@ -1,5 +1,9 @@
 "use client";
 
+import { AiLoading } from "@/components/assistant/AiLoading";
+
+import { DashboardControlCard } from "@/components/assistant/DashboardControlCard";
+
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import {
@@ -29,7 +33,7 @@ export function WizardAiCopilot() {
   // Result of applying an idea locally (no request needed).
   const [localNote, setLocalNote] = useState<string | null>(null);
 
-  const { messages, ask, loading, error } = useMarketingAssistant({
+  const { messages, ask, loading, activeIntent, cancel, error } = useMarketingAssistant({
     onAction: (action) =>
       applyAiUpdates(
         action.draftUpdates ?? {},
@@ -233,7 +237,9 @@ export function WizardAiCopilot() {
             ))}
           </div>
 
+          {loading && <AiLoading intent={activeIntent} onCancel={cancel} />}
           {/* Assistant output / answer */}
+          {lastReply?.control && <DashboardControlCard control={lastReply.control} />}
           {lastMessage && (
             <div className="rounded-[10px] border border-[#e9e9ef] bg-[#fafafd] p-4 text-[13px] text-[#262535]">
               <div className="mb-2 flex items-center justify-between border-b border-[#ecebf4] pb-1.5">
@@ -304,9 +310,8 @@ export function WizardAiCopilot() {
               id="wizard-copilot-input"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              disabled={loading}
               placeholder="Ask Keh to fill fields, adjust captions, or suggest a campaign plan…"
-              className="flex-1 rounded-[8px] border border-[#e9e9ef] bg-[#f7f8fb] px-3.5 py-2 text-[13px] text-[#262535] placeholder:text-[#a0a0ad] focus:border-[#5849da] focus:outline-none"
+              className="min-w-0 flex-1 rounded-[8px] border border-[#e9e9ef] bg-[#f7f8fb] px-3.5 py-2 text-[13px] text-[#262535] placeholder:text-[#a0a0ad] focus:border-[#5849da] focus:outline-none"
             />
             <button
               type="submit"
@@ -318,7 +323,7 @@ export function WizardAiCopilot() {
               ) : (
                 <Send size={14} />
               )}
-              <span>Ask Keh</span>
+              <span>{loading ? "Working…" : "Ask Keh"}</span>
             </button>
           </form>
         </div>

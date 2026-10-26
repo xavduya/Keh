@@ -1,3 +1,4 @@
+import { cache } from "react";
 /**
  * Campaign service
  *
@@ -64,7 +65,7 @@ function toPost(row: SocialPostRow): SocialPost {
 // Reads
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function getCampaigns(businessId: string): Promise<Campaign[]> {
+export const getCampaigns = cache(async function getCampaigns(businessId: string): Promise<Campaign[]> {
   const supabase = await createServerClient();
   const { data, error } = await supabase
     .from("campaigns")
@@ -74,7 +75,7 @@ export async function getCampaigns(businessId: string): Promise<Campaign[]> {
 
   if (error) throw error;
   return data.map(toCampaign);
-}
+});
 
 async function getPostsForCampaigns(campaignIds: string[]): Promise<SocialPost[]> {
   if (campaignIds.length === 0) return [];
@@ -93,12 +94,12 @@ async function getPostsForCampaigns(campaignIds: string[]): Promise<SocialPost[]
 }
 
 /** All campaigns with their product and posts, newest first. */
-export async function getEnrichedCampaigns(businessId: string): Promise<EnrichedCampaign[]> {
-  const [campaigns, products] = await Promise.all([
+export const getEnrichedCampaigns = cache(async function getEnrichedCampaigns(businessId: string): Promise<EnrichedCampaign[]> {
+  const [campaigns, products, posts] = await Promise.all([
     getCampaigns(businessId),
     getProducts(businessId),
+    getCampaigns(businessId).then((rows) => getPostsForCampaigns(rows.map((c) => c.id))),
   ]);
-  const posts = await getPostsForCampaigns(campaigns.map((c) => c.id));
   const productById = new Map(products.map((p) => [p.id, p]));
 
   return campaigns.flatMap((campaign) => {
@@ -106,7 +107,7 @@ export async function getEnrichedCampaigns(businessId: string): Promise<Enriched
     if (!product) return [];
     return [{ ...campaign, product, posts: posts.filter((p) => p.campaignId === campaign.id) }];
   });
-}
+});
 
 type LatestMetrics = { reach: number; interactions: number; clicks: number };
 
@@ -144,13 +145,13 @@ async function getLatestMetrics(postIds: string[]): Promise<Map<string, LatestMe
  * All posts for a business, enriched with their product and latest metrics
  * (0 until metrics have been collected), ordered by scheduled time.
  */
-export async function getPosts(businessId: string): Promise<PostPerformance[]> {
-  const [campaigns, products] = await Promise.all([
-    getCampaigns(businessId),
+export const getPosts = cache(async function getPosts(businessId: string): Promise<PostPerformance[]> {
+  const postsPromise = getCampaigns(businessId).then((rows) => getPostsForCampaigns(rows.map((c) => c.id)));
+  const [products, posts, metrics] = await Promise.all([
     getProducts(businessId),
+    postsPromise,
+    postsPromise.then((rows) => getLatestMetrics(rows.map((p) => p.id))),
   ]);
-  const posts = await getPostsForCampaigns(campaigns.map((c) => c.id));
-  const metrics = await getLatestMetrics(posts.map((p) => p.id));
   const productById = new Map(products.map((p) => [p.id, p]));
 
   return posts.flatMap((post) => {
@@ -166,7 +167,7 @@ export async function getPosts(businessId: string): Promise<PostPerformance[]> {
       clicks: m?.clicks ?? 0,
     }];
   });
-}
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Writes
@@ -191,13 +192,15 @@ export interface NewCampaignInput {
  */
 export async function createCampaignWithPosts(
   businessId: string,
-  input: NewCampaignInput
+  input: NewCampaignInput,
+  creationId?: string
 ): Promise<string> {
   const supabase = await createServerClient();
 
   const { data: campaign, error: campaignError } = await supabase
     .from("campaigns")
     .insert({
+      ...(creationId && { id: creationId }),
       business_id: businessId,
       product_id: input.product.id,
       goal: input.goal,

@@ -1,5 +1,9 @@
 "use client";
 
+import { AiLoading } from "@/components/assistant/AiLoading";
+
+import { DashboardControlCard } from "@/components/assistant/DashboardControlCard";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -23,6 +27,8 @@ import { stashPendingAiCampaign, useMarketingAssistant } from "@/hooks/useMarket
 import type { AIRecommendation, AssistantIntent, Business, MarketingCampaignAction, MarketingIdea } from "@/types";
 
 const STARTER_PROMPTS: { label: string; text: string; intent: AssistantIntent }[] = [
+  { label: "Manage my products", text: "Help me update a product. Ask which product and what I want to change.", intent: "chat" },
+  { label: "Update my brand voice", text: "Help me update my brand voice. Ask what tone and language I prefer before proposing changes.", intent: "chat" },
   {
     label: "💡 Give me 3 high-converting campaign ideas",
     text: "Give me 3 high-converting campaign ideas",
@@ -60,7 +66,7 @@ export function AssistantView({
   productCount: number;
 }) {
   const router = useRouter();
-  const { messages, ask, loading, error } = useMarketingAssistant();
+  const { messages, ask, loading, activeIntent, cancel, error } = useMarketingAssistant();
   const [question, setQuestion] = useState("");
 
   const assistantMode = [...messages].reverse().find((m) => m.role === "assistant")?.mode ?? null;
@@ -68,7 +74,7 @@ export function AssistantView({
   function handleSubmitForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const value = question.trim();
-    if (!value) return;
+    if (!value || loading) return;
     setQuestion("");
     ask(value, { intent: "chat" });
   }
@@ -88,7 +94,7 @@ export function AssistantView({
     <div className="space-y-6">
       <PageHeader
         title="Your marketing manager"
-        subtitle={`Practical next steps for ${business.name}, with full control in drafting and filling campaign posts.`}
+        subtitle={`Manage campaigns, products and your brand for ${business.name}, with every saved change reviewed by you.`}
         badge={
           <span className="inline-flex items-center gap-1.5 rounded-lg bg-[#f0edff] px-3 py-1.5 text-[12px] font-[700] text-[#5849da]">
             <Sparkles size={13} />
@@ -109,7 +115,7 @@ export function AssistantView({
                   Plan your next move
                 </h2>
                 <p className="mt-1 text-[13px] text-[#7b7b8b]">
-                  Ask for campaign ideas, captions, or ask Keh to fill in the campaign fields directly.
+                  Create campaigns, update products or your brand, and navigate your dashboard. Review every saved change before applying.
                 </p>
               </div>
               <span className="hidden shrink-0 items-center gap-1.5 rounded-full bg-[#f7f8fb] px-2.5 py-1 text-[11px] font-[600] text-[#626274] sm:inline-flex">
@@ -185,6 +191,7 @@ export function AssistantView({
                     </div>
                     <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{message.content}</p>
 
+                    {message.control && <DashboardControlCard control={message.control} />}
                     {/* Action Changes Notification Pill & Launch Button */}
                     {message.action && (
                       <div className="mt-3.5 rounded-[10px] border border-[#d8d2fb] bg-white p-3.5 shadow-2xs">
@@ -255,12 +262,7 @@ export function AssistantView({
                 </article>
               ))
             )}
-            {loading && (
-              <div className="flex items-center gap-2 text-[13px] text-[#7b7b8b]">
-                <LoaderCircle size={15} className="animate-spin text-[#5849da]" />
-                Keh is thinking and preparing your content…
-              </div>
-            )}
+            {loading && <AiLoading intent={activeIntent} onCancel={cancel} reveal />}
           </div>
 
           <div className="border-t border-[#e9e9ef] px-5 py-4 sm:px-6">
@@ -295,12 +297,12 @@ export function AssistantView({
                 className="inline-flex h-11 shrink-0 items-center gap-2 rounded-[8px] bg-[#5849da] px-4 text-[13px] font-[600] text-white transition-colors hover:bg-[#4a3cc7] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {loading ? <LoaderCircle size={15} className="animate-spin" /> : <Send size={15} />}
-                <span className="hidden sm:inline">Ask Keh</span>
+                <span className="hidden sm:inline">{loading ? "Working…" : "Ask Keh"}</span>
               </button>
             </form>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
               <p className="text-[11px] text-[#8a8998]">
-                Keh directly fills up fields in your posting process and informs you of changes.
+                Saved changes require Review → Apply. Keh reports success only after saving.
               </p>
               <Link
                 href="/campaigns/new"

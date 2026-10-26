@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { isAiEnabled } from "@/lib/ai/enabled";
 import Link from "next/link";
 import {
   Sparkles, Calendar, Tag, Megaphone,
@@ -133,7 +134,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4">
 
         {/* Recommendation card */}
-        <RecommendationCard data={card} stale={stale} />
+        <RecommendationCard data={card} stale={stale} aiEnabled={isAiEnabled()} />
 
         {/* Quick actions */}
         <div className="bg-white rounded-[12px] border border-[#e9e9ef] p-5">
@@ -162,8 +163,8 @@ export default async function DashboardPage() {
 
       {/* Stats section */}
       <div>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-baseline gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div className="flex flex-wrap items-baseline gap-3">
             <h2 className="font-heading font-[700] text-[17px] text-[#262535]">
               A little progress, every day
             </h2>

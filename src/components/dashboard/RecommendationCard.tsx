@@ -1,5 +1,7 @@
 "use client";
 
+import { AiLoading } from "@/components/assistant/AiLoading";
+
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
@@ -25,10 +27,12 @@ export interface RecommendationCardData {
 export function RecommendationCard({
   data,
   stale,
+  aiEnabled = true,
 }: {
   data: RecommendationCardData;
   /** Recommendations are missing or over a week old — generate new ones. */
   stale: boolean;
+  aiEnabled?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -38,21 +42,23 @@ export function RecommendationCard({
   // Generate this week's recommendations in the background when needed.
   const autoRefreshed = useRef(false);
   useEffect(() => {
-    if (!stale || autoRefreshed.current) return;
+    if (!aiEnabled || !stale || autoRefreshed.current) return;
     autoRefreshed.current = true;
     refreshRecommendations().then((result) => {
       if (result.updated) router.refresh();
-    });
-  }, [stale, router]);
+    }).catch(() => { /* Keep the existing card when background refresh fails. */ });
+  }, [aiEnabled, stale, router]);
 
   function newIdeas() {
     setError(null);
     setAction("refresh");
     startTransition(async () => {
-      const result = await refreshRecommendations({ force: true });
-      if (result.error) setError(result.error);
-      if (result.updated) router.refresh();
-      setAction(null);
+      try {
+        const result = await refreshRecommendations({ force: true });
+        if (result.error) setError(result.error);
+        if (result.updated) router.refresh();
+      } catch { setError("Could not refresh ideas. Please try again."); }
+      finally { setAction(null); }
     });
   }
 
@@ -67,7 +73,7 @@ export function RecommendationCard({
   }
 
   return (
-    <div className={`bg-white rounded-[12px] border border-[#e9e9ef] overflow-hidden transition-opacity ${pending ? "opacity-60" : ""}`}>
+    <div className="bg-white rounded-[12px] border border-[#e9e9ef] overflow-hidden">
       <div className="p-6">
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2 text-[#5849da] text-[12px] font-[700] uppercase tracking-[0.06em]">
@@ -77,13 +83,14 @@ export function RecommendationCard({
           <button
             type="button"
             onClick={newIdeas}
-            disabled={pending}
+            disabled={pending || !aiEnabled}
             className="inline-flex items-center gap-1.5 rounded-[7px] px-2 py-1 text-[12px] font-[600] text-[#5849da] hover:bg-[#f0edff] disabled:opacity-50"
           >
             {action === "refresh" ? <LoaderCircle size={13} className="animate-spin" /> : <RefreshCw size={13} />}
             {action === "refresh" ? "Thinking…" : "New ideas"}
           </button>
         </div>
+        {pending && action === "refresh" && <AiLoading intent="ideas" />}
         <div className="flex gap-5">
           <div className="flex-1">
             <h2 className="font-heading text-[22px] font-[750] tracking-[-0.03em] text-[#262535] leading-[1.2] mb-3">

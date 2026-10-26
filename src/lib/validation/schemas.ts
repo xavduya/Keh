@@ -1,3 +1,4 @@
+import { DashboardControlSchema } from "@/lib/ai/control-schema";
 /**
  * Zod validation schemas
  *
@@ -125,6 +126,7 @@ export const MarketingAssistantRequestSchema = z.object({
     .default([]),
   currentDraft: z
     .object({
+      editId: z.string().uuid().nullable().optional(),
       goal: z.union([CampaignGoalSchema, z.literal("")]).optional(),
       productId: z.string().optional(),
       promotion: z.string().optional(),
@@ -141,6 +143,7 @@ export const MarketingAssistantRequestSchema = z.object({
 });
 
 export const MarketingAssistantResponseSchema = z.object({
+  control: DashboardControlSchema.optional(),
   answer: z.string(),
   mode: z.enum(["ai", "guided"]),
   action: MarketingCampaignActionSchema.optional(),

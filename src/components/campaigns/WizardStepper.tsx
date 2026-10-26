@@ -6,16 +6,24 @@ import { Check } from "lucide-react";
 const STEPS = ["Goal", "Content", "Platforms", "Review", "Publish"];
 
 export function WizardStepper() {
-  const { step } = useCampaign();
+  const { step, setStep } = useCampaign();
 
   return (
-    <div className="flex items-center justify-center gap-0 mb-8">
+    <nav aria-label="Campaign steps" className="flex items-center justify-center gap-0 mb-8">
       {STEPS.map((label, i) => {
         const isDone = i < step;
         const isCurrent = i === step;
         return (
           <div key={label} className="flex items-center">
-            <div className="flex flex-col items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setStep(i)}
+              disabled={i > step}
+              aria-current={isCurrent ? "step" : undefined}
+              aria-label={`Step ${i + 1}: ${label}`}
+              title={i > step ? "Complete the current step to continue" : `Go to ${label}`}
+              className="group flex min-h-11 min-w-11 flex-col items-center justify-center gap-1 rounded-lg p-1 enabled:cursor-pointer enabled:hover:bg-[#f0edff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5849da] focus-visible:ring-offset-2 disabled:cursor-not-allowed"
+            >
               <div
                 className={[
                   "w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-[700] border-2 transition-colors",
@@ -26,7 +34,7 @@ export function WizardStepper() {
                     : "bg-white border-[#e9e9ef] text-[#7b7b8b]",
                 ].join(" ")}
               >
-                {isDone ? <Check size={14} /> : i + 1}
+                {isDone ? <Check size={14} aria-hidden="true" /> : i + 1}
               </div>
               <span
                 className={[
@@ -36,11 +44,11 @@ export function WizardStepper() {
               >
                 {label}
               </span>
-            </div>
+            </button>
             {i < STEPS.length - 1 && (
               <div
                 className={[
-                  "w-12 md:w-20 h-[2px] mx-1 mb-4",
+                  "w-5 sm:w-12 md:w-20 h-[2px] mx-1 sm:mb-4",
                   i < step ? "bg-[#5849da]" : "bg-[#e9e9ef]",
                 ].join(" ")}
               />
@@ -48,6 +56,6 @@ export function WizardStepper() {
           </div>
         );
       })}
-    </div>
+    </nav>
   );
 }

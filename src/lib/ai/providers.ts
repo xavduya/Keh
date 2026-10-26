@@ -1,41 +1,19 @@
-/**
- * Language-model providers for the Keh marketing manager (server-only).
- *
- * Picks the first configured provider:
- *   1. Gemini  — GEMINI_API_KEY  (free tier; GEMINI_MODEL, default gemini-3.8-flash,
- *                then GEMINI_FALLBACK_MODELS when that model is overloaded)
- *   2. OpenAI  — OPENAI_API_KEY  (OPENAI_MODEL, default gpt-4o-mini)
- *   3. none    — the caller falls back to the guided engine
- *
- * Every provider gets the same system prompt + stateless conversation and
- * must return the model's raw JSON text, or null on any failure (quota,
- * timeout, blocked output…). Nothing here throws.
- *
- * Keeping usage down:
- *   - Thinking is capped (GEMINI_THINKING_LEVEL, default "low") and each
- *     caller sets its own output-token budget.
- *   - One request makes at most MAX_ATTEMPTS upstream calls, with no retry of
- *     the same model. A model that answered 429/404/5xx is skipped for a
- *     while (see cooldowns) instead of being asked again on the next request.
- *   - Every call logs its token usage as "[ai] <label> …" so you can see
- *     where tokens go.
- *
- * Note: on Gemini's free tier, Google may use prompts and responses to
- * improve its products — don't send data you wouldn't share.
- */
-
+/** Server-side Gemini adapter with bounded retries. */
 import { z } from "zod";
+import { isAiEnabled } from "./enabled";
+import { AiGenerationError } from "./errors";
 
 export interface ChatTurn {
   role: "user" | "assistant";
   content: string;
 }
 
-export type ProviderName = "gemini" | "openai";
+export type ProviderName = "gemini";
 
 export interface GenerateOptions {
   /** Tag for the usage log, e.g. "chat:captions" or "recommendations". */
   label: string;
+  throwOnError?: boolean;
   /** Output budget (for Gemini this includes any thinking tokens). */
   maxOutputTokens: number;
   /** JSON Schema the reply must follow (structured output). */
@@ -45,14 +23,14 @@ export interface GenerateOptions {
 const TIMEOUT_MS = 30_000;
 /** Upstream calls per request: the first available model plus one fallback. */
 const MAX_ATTEMPTS = 2;
-const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
-/** Other free-tier models, tried in order when the main one is busy. */
-const DEFAULT_GEMINI_FALLBACKS = "gemini-3.7-flash,gemini-3.6-flash";
+const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite";
+/** Alternative Gemini models, tried in order when the main one is busy. */
+const DEFAULT_GEMINI_FALLBACKS = "gemini-3.8-flash,gemini-3.7-flash";
 
 /** The provider that will answer, or null when none is configured. */
 export function activeProvider(): ProviderName | null {
+  if (!isAiEnabled()) return null;
   if (process.env.GEMINI_API_KEY) return "gemini";
-  if (process.env.OPENAI_API_KEY) return "openai";
   return null;
 }
 
@@ -62,10 +40,15 @@ export async function generateJson(
   turns: ChatTurn[],
   options: GenerateOptions
 ): Promise<string | null> {
-  const provider = activeProvider();
-  if (provider === "gemini") return callGemini(system, turns, options);
-  if (provider === "openai") return callOpenAI(system, turns, options);
-  return null;
+  try {
+    if (!isAiEnabled()) throw new AiGenerationError("AI responses are temporarily paused.");
+    if (!activeProvider()) throw new AiGenerationError("Gemini isn't configured. Add GEMINI_API_KEY on the server.");
+    return await callGemini(system, turns, options);
+  } catch (error) {
+    if (options.throwOnError) throw error;
+    console.warn(`[ai] ${options.label}: generation unavailable.`);
+    return null;
+  }
 }
 
 function logUsage(
@@ -173,12 +156,13 @@ function isDailyQuota(detail: unknown): boolean {
 async function callGemini(system: string, turns: ChatTurn[], options: GenerateOptions): Promise<string | null> {
   const models = geminiModels().slice(0, MAX_ATTEMPTS);
   if (models.length === 0) {
-    console.warn(`[ai] ${options.label}: every Gemini model is cooling down after errors; using guided mode.`);
-    return null;
+    console.warn(`[ai] ${options.label}: every Gemini model is cooling down after errors.`);
+    throw new AiGenerationError("Gemini is temporarily busy or out of quota. Please try again later.");
   }
   // One deadline for every attempt, so the owner never waits > 30 s.
   const signal = AbortSignal.timeout(TIMEOUT_MS);
 
+  let failure = new AiGenerationError("Gemini is temporarily unavailable. Please try again.");
   try {
     for (const [index, model] of models.entries()) {
       const started = Date.now();
@@ -206,15 +190,24 @@ async function callGemini(system: string, turns: ChatTurn[], options: GenerateOp
         }
       );
 
-      if (response.ok) return readGeminiText(options.label, model, started, await response.json());
+      if (response.ok) {
+        const text = readGeminiText(options.label, model, started, await response.json());
+        if (text) {
+          try { JSON.parse(text); return text; } catch { /* Try the next model for malformed JSON. */ }
+        }
+        failure = new AiGenerationError("Gemini returned an incomplete response. Please try again.", 502);
+        continue;
+      }
 
       const detail = await response.json().catch(() => null);
       const reason = `${response.status} ${detail?.error?.status ?? ""}`.trim();
       if (response.status === 429) {
+        failure = new AiGenerationError("Gemini has reached its request limit. Please try again later.", 429);
         const daily = isDailyQuota(detail);
         coolDown(model, daily ? HOUR_MS : (retryDelayMs(detail) ?? 60_000));
         console.warn(`[ai] ${options.label} ${model}: ${daily ? "daily" : "per-minute"} quota reached; skipping it for a while.`);
       } else if (response.status === 404) {
+        failure = new AiGenerationError("The configured Gemini model is unavailable. Check GEMINI_MODEL on the server.");
         coolDown(model, HOUR_MS);
         console.warn(`[ai] ${options.label} ${model}: model not found (retired?); skipping it for an hour.`);
       } else if (response.status >= 500) {
@@ -223,14 +216,17 @@ async function callGemini(system: string, turns: ChatTurn[], options: GenerateOp
       } else {
         // 400 etc.: another model won't do better with the same request.
         console.warn(`[ai] ${options.label} ${model} request failed: ${reason} ${detail?.error?.message?.slice(0, 200) ?? ""}`);
-        return null;
+        throw new AiGenerationError("Gemini rejected the request. Check the server API key and model configuration.");
       }
       if (index < models.length - 1) console.warn(`[ai] ${options.label}: trying ${models[index + 1]}.`);
     }
-    return null;
+    throw failure;
   } catch (error) {
-    console.error(`[ai] ${options.label}: Gemini call failed.`, error);
-    return null;
+    if (error instanceof AiGenerationError) throw error;
+    console.warn(`[ai] ${options.label}: Gemini transport failed.`);
+    throw new AiGenerationError(signal.aborted
+      ? "Gemini took too long to answer. Please try again."
+      : "Couldn't reach Gemini. Please try again.");
   }
 }
 
@@ -260,67 +256,8 @@ function readGeminiText(label: string, model: string, started: number, json: unk
     return null;
   }
   if (candidate.finishReason === "MAX_TOKENS") {
-    console.warn(`[ai] ${label} ${model} hit its output-token budget; the reply may be cut off.`);
-  }
-  return text;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// OpenAI — chat completions
-// ─────────────────────────────────────────────────────────────────────────────
-
-const OpenAIResponseSchema = z.object({
-  choices: z.array(z.object({ message: z.object({ content: z.string().nullable() }) })),
-  usage: z
-    .object({
-      prompt_tokens: z.number().optional(),
-      completion_tokens: z.number().optional(),
-      total_tokens: z.number().optional(),
-      completion_tokens_details: z.object({ reasoning_tokens: z.number().optional() }).optional(),
-    })
-    .optional(),
-});
-
-async function callOpenAI(system: string, turns: ChatTurn[], options: GenerateOptions): Promise<string | null> {
-  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
-  const started = Date.now();
-  try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "system", content: system }, ...turns],
-        response_format: options.schema
-          ? { type: "json_schema", json_schema: { name: options.schema.name, schema: options.schema.schema, strict: false } }
-          : { type: "json_object" },
-        max_tokens: options.maxOutputTokens,
-        temperature: 0.8,
-      }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-
-    if (!response.ok) {
-      const detail = await response.json().catch(() => null);
-      console.warn(`[ai] ${options.label} ${model} request failed: ${response.status} ${detail?.error?.code ?? ""}`);
-      return null;
-    }
-
-    const parsed = OpenAIResponseSchema.safeParse(await response.json());
-    if (!parsed.success) return null;
-    const usage = parsed.data.usage;
-    logUsage(options.label, model, started, {
-      input: usage?.prompt_tokens,
-      output: usage?.completion_tokens,
-      thinking: usage?.completion_tokens_details?.reasoning_tokens,
-      total: usage?.total_tokens,
-    });
-    return parsed.data.choices[0]?.message.content?.trim() || null;
-  } catch (error) {
-    console.error(`[ai] ${options.label}: OpenAI call failed.`, error);
+    console.warn(`[ai] ${label} ${model} hit its output-token budget.`);
     return null;
   }
+  return text;
 }

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { redirect } from "next/navigation";
 import { getCurrentContext } from "@/lib/auth/context";
 import { CampaignDraftSchema } from "@/lib/validation/schemas";
@@ -40,11 +41,18 @@ function revalidateCampaignPages() {
 }
 
 /** Creates a campaign, or updates the one in `draft.editId`. */
-export async function saveCampaign(
+export async function persistCampaign(
   draft: CampaignDraft,
-  intent: SaveIntent
-): Promise<{ error: string }> {
+  intent: SaveIntent,
+  creationId?: string
+): Promise<{ error: string } | { campaignId: string }> {
+  if (!["draft", "schedule", "publish"].includes(intent)) return { error: "Choose a valid save action." };
   const { business } = await getCurrentContext();
+  if (creationId && !z.uuid().safeParse(creationId).success) return { error: "Invalid campaign request." };
+  if (creationId && !draft.editId) {
+    const previous = await getCampaignWithPosts(business.id, creationId);
+    if (previous) return { campaignId: previous.id };
+  }
 
   const parsed = CampaignDraftSchema.safeParse(draft);
   if (!parsed.success) {
@@ -138,7 +146,7 @@ export async function saveCampaign(
       return { error: await quotaMessage(business.id, quota.reason) };
     }
     try {
-      campaignId = await createCampaignWithPosts(business.id, input);
+      campaignId = await createCampaignWithPosts(business.id, input, creationId);
     } catch (err) {
       console.error("saveCampaign failed", err);
       if (!("unavailable" in quota)) await releaseCampaignQuota(business.id, scheduledPosts);
@@ -157,6 +165,13 @@ export async function saveCampaign(
   }
 
   revalidateCampaignPages();
+  return { campaignId };
+}
+
+/** Wizard form adapter; dashboard control uses the same persistence path. */
+export async function saveCampaign(draft: CampaignDraft, intent: SaveIntent): Promise<{ error: string }> {
+  const result = await persistCampaign(draft, intent);
+  if ("error" in result) return result;
   redirect("/campaigns");
 }
 

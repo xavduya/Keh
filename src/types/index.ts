@@ -1,3 +1,4 @@
+import type { DashboardControl } from "@/lib/ai/control-schema";
 /**
  * Keh — Domain types
  *
@@ -393,6 +394,7 @@ export type AssistantIntent = "chat" | "ideas" | "fill" | "captions" | "schedule
 
 /** Response from POST /api/assistant. */
 export interface MarketingAssistantResponse {
+  control?: DashboardControl;
   answer: string;
   /** "ai" when a language model answered; "guided" for the built-in rules engine. */
   mode: "ai" | "guided";
@@ -402,6 +404,7 @@ export interface MarketingAssistantResponse {
 
 /** A message in an assistant conversation (client-side only). */
 export interface AssistantMessage {
+  control?: DashboardControl;
   id: string;
   role: "user" | "assistant";
   content: string;

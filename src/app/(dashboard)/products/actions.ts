@@ -35,7 +35,13 @@ export async function saveProduct(
   }
 
   const id = formData.get("id");
+  const creationId = formData.get("controlCreationId");
+  if (creationId && !z.uuid().safeParse(creationId).success) return { error: "Invalid product request." };
   try {
+    if (!id && typeof creationId === "string") {
+      const previous = await getProductById(creationId);
+      if (previous?.businessId === business.id) return { success: true };
+    }
     // RLS already limits updates to the owner's products; this check turns
     // a foreign or stale ID into a clear message instead of a silent no-op.
     if (typeof id === "string" && id) {
@@ -50,7 +56,7 @@ export async function saveProduct(
     if (typeof id === "string" && id) {
       await updateProduct(id, parsed.data, imageUrl);
     } else {
-      await createProduct(business.id, parsed.data, imageUrl ?? "");
+      await createProduct(business.id, parsed.data, imageUrl ?? "", typeof creationId === "string" ? creationId : undefined);
     }
   } catch (err) {
     console.error("saveProduct failed", err);

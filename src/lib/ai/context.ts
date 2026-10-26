@@ -29,6 +29,10 @@ export async function buildMarketingContext(business: Business): Promise<Marketi
   const summary = periodSummary(posts, todayKey());
 
   const context: MarketingAssistantContext = {
+    dashboard: {
+      catalog: products.slice(0, 100).map(({ id, name, price, availability }) => ({ id, name, price, availability })),
+      campaigns: [...new Map(posts.map((p) => [p.campaignId, { id: p.campaignId, productId: p.productId, title: p.title, status: p.status, scheduledAt: p.scheduledAt }])).values()].slice(0, 40),
+    },
     business: {
       name: business.name,
       description: business.description,

@@ -13,7 +13,7 @@ Keh is a social media manager for small business owners. The owner makes the bus
 | Campaigns, Calendar, Content, Home | Real data, with live refresh across open tabs |
 | Publishing | **Placeholder for the MVP:** scheduled posts are saved to the calendar, nothing is posted. Posting to Facebook / Instagram and metrics collection are built but switched off (see "Publishing to social platforms") |
 | Analytics | Real calculations from `post_metrics` (filled by `seed:demo` for now, by the metrics job once publishing is on) |
-| AI marketing manager | Chat, "fill the campaign for me", caption rewrites and weekly recommendations. Gemini or OpenAI, with a rules-based fallback when neither is configured |
+| AI marketing manager | Chat, "fill the campaign for me", caption rewrites and weekly recommendations. Gemini for generated responses; clear errors on failure. Scheduling/results and offline recommendations can use calculated rules |
 | Brand profile | Business details, brand voice, logo and brand image |
 | Social accounts | Connect a Facebook Page and Instagram Business account (Meta OAuth, choose between Pages, tokens encrypted); TikTok by username |
 | Plans & billing | Four plans with monthly campaign / scheduled-post limits and a daily AI limit. **Placeholder:** no payment provider yet — with `BILLING_ENABLED=true` a demo checkout switches plans instantly; otherwise everyone is on Free |
@@ -27,7 +27,7 @@ Keh is a social media manager for small business owners. The owner makes the bus
 - **TypeScript** (strict), **Tailwind CSS v4**, **shadcn/ui** (Base UI), **lucide-react**, **Recharts**
 - **Zod 4** for validation
 - **Supabase**: Postgres with Row Level Security, Auth, Storage, Realtime
-- **Gemini** (default) or **OpenAI** for the AI features, called over REST from the server only
+- **Gemini** for the AI features, called over REST from the server only
 
 ## Getting started
 
@@ -43,7 +43,7 @@ Keh is a social media manager for small business owners. The owner makes the bus
    |---|---|---|
    | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Yes | Supabase → Project Settings → API Keys |
    | `SUPABASE_SECRET_KEY` | Yes | Server-only; bypasses RLS |
-   | `GEMINI_API_KEY` or `OPENAI_API_KEY` | No | Without one, the AI runs in guided (rules-based) mode |
+   | `GEMINI_API_KEY` | For AI | Required for generated chat, ideas and captions |
    | `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`, `GEMINI_THINKING_LEVEL` | No | See `.env.example` |
    | `META_APP_ID`, `META_APP_SECRET` | No | Needed to connect Facebook / Instagram |
    | `SOCIAL_TOKEN_KEY` | To connect Facebook / Instagram | Encrypts platform tokens; 32 random bytes, base64 (command in `.env.example`) |
@@ -162,7 +162,7 @@ src/
 ├── components/          # UI, grouped by feature (campaigns, assistant, layout, ui…)
 ├── services/            # data access (Supabase), one file per area
 ├── lib/
-│   ├── ai/              # prompts, providers (Gemini/OpenAI), rate limit, recommendations
+│   ├── ai/              # prompts, Gemini provider, rate limit, recommendations
 │   ├── analytics.ts     # pure performance calculations
 │   ├── social/          # Meta Graph API, Facebook/Instagram publishers, token encryption, OAuth state
 │   ├── supabase/        # browser/server/admin clients, database types
@@ -175,3 +175,47 @@ scripts/                 # seed-demo-data.mjs
 ```
 
 Architecture, conventions and rules for contributors (and AI agents) are in [CLAUDE.md](CLAUDE.md).
+
+### AI response checks
+
+Run `npm test` for offline regression tests. To test two consecutive responses
+against Gemini with synthetic cafe data and the local key, run
+`node scripts/test-ai-live.mjs`. This uses API quota; it does not access the database.
+A passing smoke test confirms `mode: "ai"` and the website response schema.
+
+Gemini failures are shown explicitly in chat; rule-based advice is no longer
+substituted for failed generation. Requests have a 30-second provider deadline,
+at most two model attempts, and a 55-second browser timeout. Gemini 3.1 Flash Lite is the primary model, with Gemini 3.8 Flash and 3.7 Flash
+as alternatives; `GEMINI_MODEL` and `GEMINI_FALLBACK_MODELS` override these defaults.
+
+### Keh AI Manager Control
+
+The full assistant, floating manager and campaign wizard share a dashboard control
+card. Ask Keh to create or update products, create or edit campaigns, update the
+business/brand profile, delete a product or campaign, or open a dashboard page.
+For example: “Change Coffee to 120 pesos” or “Prepare a Facebook campaign draft
+for Coffee.” Changes appear as proposals; **Review changes** loads the current
+server values and **Apply these changes** saves them. Cancel leaves records alone.
+
+All saves use the existing authenticated actions, ownership checks, validation,
+plan quotas and publishing settings. Applying rechecks the preview against current
+data. Creation requests reuse an operation ID to prevent duplicate records on retry.
+Payments, credentials, uploads and social account connections remain manual flows.
+Publishing requires the existing publishing integration to be enabled and configured.
+
+`npm test` covers the control validation and save boundaries with mocked storage.
+`node scripts/test-ai-live.mjs` also checks live product/campaign proposals using
+synthetic data, without saving anything in the database.
+
+### Rendering and AI pause
+
+`AI_ENABLED=false` pauses Gemini at the provider and assistant endpoint, stops
+background recommendation generation, and hides the floating assistant. Set it
+to `true` and restart the server to resume. The local project currently has Gemini enabled.
+
+Dashboard account loading and page loading now have separate streaming fallbacks.
+Product and campaign reads are memoized only within a server render with React
+`cache` (not shared across users or requests). Hidden tabs defer realtime refreshes;
+visible tabs coalesce bursts with a 15-second minimum gap. Explicit saves still
+revalidate normally. Compare performance using `npm run build` / `npm start`,
+since first visits under `next dev` include route compilation.

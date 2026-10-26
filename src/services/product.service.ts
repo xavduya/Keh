@@ -1,3 +1,4 @@
+import { cache } from "react";
 /**
  * Product service
  *
@@ -27,7 +28,7 @@ function toProduct(row: ProductRow): Product {
   };
 }
 
-export async function getProducts(businessId: string): Promise<Product[]> {
+export const getProducts = cache(async function getProducts(businessId: string): Promise<Product[]> {
   const supabase = await createServerClient();
   const { data, error } = await supabase
     .from("products")
@@ -37,7 +38,7 @@ export async function getProducts(businessId: string): Promise<Product[]> {
 
   if (error) throw error;
   return data.map(toProduct);
-}
+});
 
 export async function getProductById(id: string): Promise<Product | null> {
   const supabase = await createServerClient();
@@ -80,12 +81,14 @@ function toRowFields(
 export async function createProduct(
   businessId: string,
   input: ProductInput,
-  imageUrl: string
+  imageUrl: string,
+  creationId?: string
 ): Promise<Product> {
   const supabase = await createServerClient();
   const { data, error } = await supabase
     .from("products")
     .insert({
+      ...(creationId && { id: creationId }),
       ...toRowFields(input),
       business_id: businessId,
       image_url: imageUrl,
