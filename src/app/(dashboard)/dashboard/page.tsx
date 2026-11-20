@@ -11,7 +11,7 @@ import { SocialPlatformBadge, PlatformGroup } from "@/components/ui/social-platf
 import { PostStatusBadge } from "@/components/ui/post-status-badge";
 import { getPosts } from "@/services/campaign.service";
 import { getProducts } from "@/services/product.service";
-import { findings, insights, periodSummary, postDateKey, recommendNextMove } from "@/lib/analytics";
+import { findings, insights, periodSummary, recommendNextMove } from "@/lib/analytics";
 import { getRecommendationState } from "@/services/recommendation.service";
 import { RecommendationCard, type RecommendationCardData } from "@/components/dashboard/RecommendationCard";
 import { toCardData } from "@/utils/recommendations";
@@ -105,14 +105,10 @@ export default async function DashboardPage() {
   const card: RecommendationCardData = recommendations[0]
     ? toCardData(recommendations[0], products)
     : {
-        ...fallback,
-        basis: found.measuredCount > 0 ? "Based on your recent results" : "Based on your products",
-        generatedByAi: false,
-      };
-  const upcomingCount = posts.filter(
-    (p) => p.status === "SCHEDULED" && postDateKey(p) >= todayDate
-  ).length;
-
+      ...fallback,
+      basis: found.measuredCount > 0 ? "Based on your recent results" : "Based on your products",
+      generatedByAi: false,
+    };
   return (
     <div className="space-y-6">
       <PageHeader
@@ -166,9 +162,8 @@ export default async function DashboardPage() {
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div className="flex flex-wrap items-baseline gap-3">
             <h2 className="font-heading font-[700] text-[17px] text-[#262535]">
-              A little progress, every day
+              Campaign Performance
             </h2>
-            <span className="text-[13px] text-[#7b7b8b]">Last 30 days</span>
           </div>
           <Link
             href="/analytics"
@@ -179,12 +174,11 @@ export default async function DashboardPage() {
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard
-            label="People reached"
+            label="Views"
             value={summary.current.reach.toLocaleString()}
             icon={<Eye size={16} />}
             growth={growthLabel(summary.reachGrowthPct)}
             trend={(summary.reachGrowthPct ?? 0) < 0 ? "down" : "up"}
-            bottom={summary.current.reach === 0 ? "Results appear once posts go live" : undefined}
           />
           <StatCard
             label="Interactions"
@@ -192,23 +186,16 @@ export default async function DashboardPage() {
             icon={<Heart size={16} />}
             growth={growthLabel(summary.interactionsGrowthPct)}
             trend={(summary.interactionsGrowthPct ?? 0) < 0 ? "down" : "up"}
-            bottom={summary.current.interactions === 0 ? "Likes, comments, shares and saves" : undefined}
           />
           <StatCard
             label="Posts published"
             value={summary.current.published}
             icon={<FileText size={16} />}
-            bottom={upcomingCount > 0 ? `${upcomingCount} more scheduled` : "Nothing scheduled yet"}
           />
           <StatCard
             label="Best-performing product"
             value={found.bestProduct?.value.name ?? "—"}
             icon={<Package size={16} />}
-            bottom={
-              found.bestProduct
-                ? `${found.bestProduct.avgReach.toLocaleString()} people per post`
-                : "Needs a few published posts"
-            }
             highlight={Boolean(found.bestProduct)}
           />
         </div>

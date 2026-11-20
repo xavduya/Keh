@@ -62,7 +62,6 @@ export function AnalyticsView({ posts, today }: { posts: PostPerformance[]; toda
     <div className="space-y-5">
       <PageHeader
         title="A clearer picture of what works"
-        subtitle="Simple insights. Better decisions. More time for your business."
         action={
           overall.bestProduct && (
             <div className="flex items-center gap-2 rounded-[8px] border border-[#e9e9ef] bg-white px-3 py-2">

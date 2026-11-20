@@ -27,11 +27,6 @@ export default async function ChoosePagePage() {
     <div className="space-y-5 max-w-[640px]">
       <PageHeader
         title={instagram ? "Which Instagram account?" : "Which Facebook Page?"}
-        subtitle={
-          instagram
-            ? "You manage several Pages with Instagram accounts. Pick the one for this business."
-            : "You manage several Pages. Pick the one for this business."
-        }
       />
 
       <ul className="bg-white rounded-[12px] border border-brand-line divide-y divide-brand-line">

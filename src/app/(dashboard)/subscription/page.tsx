@@ -2,7 +2,6 @@ import { PageHeader } from "@/components/ui/page-header";
 import { HintBox } from "@/components/ui/hint-box";
 import { PlanPicker } from "@/components/billing/PlanPicker";
 import { getSubscription } from "@/services/business.service";
-import { SUBSCRIPTION_PLANS } from "@/constants";
 import { getCurrentContext } from "@/lib/auth/context";
 import { getBillingProvider } from "@/lib/billing/provider";
 import { isBillingEnabled } from "@/lib/env";
@@ -41,14 +40,13 @@ export default async function SubscriptionPage() {
       <HintBox>We couldn&apos;t find your plan. Refresh the page, or contact support if this keeps happening.</HintBox>
     );
   }
-  const plan = SUBSCRIPTION_PLANS.find((p) => p.id === sub.plan) ?? SUBSCRIPTION_PLANS[0];
   const { usage } = sub;
   const billingEnabled = isBillingEnabled();
   const left = (limit: number, used: number) => Math.max(limit - used, 0);
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Your subscription" subtitle={`You're on the ${plan.name} plan.`} />
+      <PageHeader title="Your subscription" />
 
       <section className="bg-white rounded-[12px] border border-brand-line p-6 space-y-5">
         <div>

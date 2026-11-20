@@ -227,7 +227,6 @@ export function CampaignsList({
     <div className="space-y-5">
       <PageHeader
         title="Your campaigns"
-        subtitle="Keep every idea, post, and promotion moving in one place."
         action={
           <Link
             href="/campaigns/new"

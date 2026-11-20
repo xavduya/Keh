@@ -162,7 +162,6 @@ export function BrandForm({
     <form onSubmit={handleSubmit} noValidate className="space-y-5">
       <PageHeader
         title="Your business, in your own words"
-        subtitle="The more we understand your business, the better your content becomes."
       />
 
       {/* Business information */}

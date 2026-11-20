@@ -32,7 +32,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Make yourself at home" subtitle="Your account and workspace." />
+      <PageHeader title="Make yourself at home" />
 
       <section className="bg-white rounded-[12px] border border-brand-line p-6">
         <h2 className="font-heading font-[700] text-[17px] text-brand-dark mb-2">Account</h2>
