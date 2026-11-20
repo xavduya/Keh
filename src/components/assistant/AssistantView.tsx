@@ -94,7 +94,6 @@ export function AssistantView({
     <div className="space-y-6">
       <PageHeader
         title="Your marketing manager"
-        subtitle={`Manage campaigns, products and your brand for ${business.name}, with every saved change reviewed by you.`}
         badge={
           <span className="inline-flex items-center gap-1.5 rounded-lg bg-[#f0edff] px-3 py-1.5 text-[12px] font-[700] text-[#5849da]">
             <Sparkles size={13} />

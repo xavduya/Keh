@@ -140,7 +140,6 @@ export function ContentView({ posts }: { posts: EnrichedPost[] }) {
     <div className="space-y-5">
       <PageHeader
         title="Your content, all together"
-        subtitle="Good ideas deserve another moment in the spotlight."
         action={
           <Link
             href="/campaigns/new"

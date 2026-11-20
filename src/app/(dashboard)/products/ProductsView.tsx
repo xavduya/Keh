@@ -94,7 +94,6 @@ export function ProductsView({ products }: { products: Product[] }) {
     <div className="space-y-5">
       <PageHeader
         title="Products & services"
-        subtitle="The more Keh knows, the less you have to explain."
         action={addButton}
       />
 

@@ -20,11 +20,6 @@ function WizardBody() {
     <div className="space-y-6">
       <PageHeader
         title={editing ? "Edit campaign" : "Create campaign"}
-        subtitle={
-          editing
-            ? "Change anything, then save — including the date to reschedule it."
-            : "Tell us what you want to achieve. We'll handle the social media strategy."
-        }
       />
 
       {/* AI change audit notification banner */}

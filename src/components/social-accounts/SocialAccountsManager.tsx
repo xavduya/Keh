@@ -165,7 +165,7 @@ export function SocialAccountsManager({
 }) {
   return (
     <div className="space-y-5">
-      <PageHeader title="Your social accounts" subtitle="One place to keep your business connected." />
+      <PageHeader title="Your social accounts" />
 
       {error && (
         <p role="alert" className="rounded-lg bg-destructive/10 px-4 py-3 text-[13px] text-destructive">
